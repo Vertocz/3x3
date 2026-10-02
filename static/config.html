@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Config</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080808; --surface: #111;
+      --border: rgba(255,255,255,0.07);
+      --text: #f5f5f5; --muted: rgba(255,255,255,0.35);
+      --green: #22c55e; --red: #ef4444;
+    }
+    html, body { height: 100%; overflow: hidden; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inconsolata', monospace; font-weight: 400; display: flex; flex-direction: column; }
+
+    /* TOP BAR */
+    .topbar { display:flex; align-items:center; justify-content:space-between; padding:10px 20px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+    .topbar-left { display:flex; align-items:center; gap:14px; }
+    .topbar-logo img { width:34px; height:34px; object-fit:contain; }
+    .topbar-title { font-size:17px; font-weight:800; letter-spacing:0.12em; line-height:1; }
+    .topbar-title small { display:block; font-size:9px; letter-spacing:0.3em; color:var(--muted); margin-bottom:2px; }
+    .topbar-icons { display:flex; align-items:center; gap:8px; }
+    .icon-btn { width:44px; height:44px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.04); color:var(--text); font-size:19px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink:0; }
+    .icon-btn:active { background:rgba(255,255,255,0.14); }
+    .icon-btn-danger { border-color:rgba(239,68,68,0.35); background:rgba(239,68,68,0.12); color:#ff8080; }
+
+    /* MAIN STAGE — pensé pour tenir sur 1024×600 sans défiler */
+    .main-stage { flex:1; display:flex; flex-direction:column; justify-content:center; gap:16px; padding:16px 24px; max-width:1000px; margin:0 auto; width:100%; min-height:0; }
+
+    .teams-row { display:flex; gap:16px; align-items:stretch; }
+    .team-card { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; min-width:0; }
+    .field-label { font-size:9px; font-weight:700; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+    .team-name-big {
+      font-size:clamp(18px,2.6vw,26px); font-weight:800; letter-spacing:0.03em; text-transform:uppercase;
+      padding:14px 16px; border-radius:6px; background:rgba(255,255,255,0.05);
+      border-left:6px solid currentColor; cursor:pointer; margin-bottom:12px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .team-name-big:active { background:rgba(255,255,255,0.1); }
+    .color-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+    .color-grid .swatch { width:100%; aspect-ratio:1; border-radius:7px; cursor:pointer; border:3px solid transparent; transition:transform .1s; }
+    .color-grid .swatch:active { transform:scale(0.92); }
+    .color-grid .swatch.active { border-color:#fff; }
+
+    .settings-row { display:flex; gap:16px; align-items:flex-start; }
+    .settings-block { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; display:flex; flex-direction:column; align-items:center; }
+    .time-picker-container { display:flex; align-items:center; gap:10px; }
+    .flip-group { display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .flip-card { position:relative; width:58px; height:70px; background:#1a1a1a; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 12px rgba(0,0,0,0.4); overflow:hidden; }
+    .flip-card::after { content:""; position:absolute; top:50%; left:0; width:100%; height:2px; background:rgba(0,0,0,0.6); z-index:2; }
+    .flip-input { width:100%; height:100%; background:transparent; border:none; color:#fff; font-family:'Inconsolata',monospace; font-size:36px; font-weight:800; text-align:center; outline:none; z-index:1; }
+    input::-webkit-outer-spin-button,input::-webkit-inner-spin-button { -webkit-appearance:none; }
+    input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+    .flip-btn { background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--muted); width:58px; height:34px; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; }
+    .flip-btn:active { background:#fff; color:#000; }
+    .time-separator { font-size:26px; font-weight:800; color:var(--muted); }
+
+    .btn-launch { width:100%; background:#fff; color:#000; border:none; border-radius:8px; font-family:'Inconsolata',monospace; font-weight:800; font-size:20px; letter-spacing:0.2em; text-transform:uppercase; padding:20px; cursor:pointer; flex-shrink:0; }
+    .btn-launch:active { opacity:0.85; }
+    .status { text-align:center; font-size:11px; margin-top:6px; min-height:16px; color:var(--muted); }
+    .status.ok { color:var(--green); }
+    .status.err { color:var(--red); }
+
+    /* MODALES (partagées) */
+    .modal-overlay { display:none; position:fixed; inset:0; z-index:500; align-items:flex-end; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.72); backdrop-filter:blur(8px); }
+    .modal-sheet { position:relative; width:100%; max-width:560px; max-height:90vh; background:#131313; border:1px solid rgba(255,255,255,0.09); border-radius:14px 14px 0 0; display:flex; flex-direction:column; transform:translateY(100%); transition:transform .28s cubic-bezier(0.32,0.72,0,1); }
+    .modal-overlay.open .modal-sheet { transform:translateY(0); }
+    .modal-handle { width:40px; height:4px; border-radius:2px; background:rgba(255,255,255,0.15); margin:12px auto 0; flex-shrink:0; }
+    .modal-header { display:flex; align-items:center; justify-content:space-between; padding:12px 18px 10px; flex-shrink:0; border-bottom:1px solid var(--border); }
+    .modal-title { font-size:11px; font-weight:700; letter-spacing:0.3em; color:var(--muted); text-transform:uppercase; }
+    .modal-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:20px; line-height:1; padding:6px 8px; }
+    .modal-body { overflow-y:auto; padding:16px 18px 28px; display:flex; flex-direction:column; gap:16px; }
+    .modal-section-label { font-size:9px; font-weight:700; letter-spacing:0.3em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+    .modal-sep { border:none; border-top:1px solid var(--border); }
+
+    /* Modale équipe : saisie du nom */
+    .modal-name-row { display:flex; gap:8px; align-items:center; }
+    .modal-name-input { flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-family:'Inconsolata',monospace; font-size:20px; font-weight:800; outline:none; text-transform:uppercase; padding:10px 12px; }
+    .modal-preview { height:38px; border-radius:4px; display:flex; align-items:center; padding:0 12px; font-size:15px; font-weight:800; border-left:4px solid currentColor; margin-top:10px; }
+    .modal-hint { font-size:10px; color:var(--muted); margin-top:8px; }
+    .btn-save-team { width:100%; padding:14px 0; cursor:pointer; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; color:var(--text); font-family:'Inconsolata',monospace; font-weight:700; font-size:13px; letter-spacing:0.15em; text-transform:uppercase; display:flex; align-items:center; justify-content:center; gap:7px; }
+
+    /* Clavier tactile */
+    .osk { display:flex; flex-direction:column; gap:6px; margin-top:10px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; }
+    .osk-row { display:flex; gap:5px; }
+    .osk-key { flex:1; min-width:0; padding:14px 0; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:5px; color:var(--text); font-weight:800; font-size:15px; cursor:pointer; user-select:none; }
+    .osk-key:active { background:rgba(255,255,255,0.22); }
+    .osk-space { flex:4; }
+    .osk-done { flex:1.6; background:#2a9d8f; color:#04211c; border-color:#2a9d8f; }
+    .osk-back { flex:1.6; }
+
+    /* Listes (équipes enregistrées, historique) */
+    .saved-list { display:flex; flex-direction:column; gap:6px; }
+    .saved-row { display:flex; align-items:center; gap:10px; padding:12px 12px; border-radius:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
+    .saved-dot { width:14px; height:14px; border-radius:50%; flex-shrink:0; }
+    .saved-name { flex:1; font-size:15px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .btn-load { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:4px; color:var(--text); cursor:pointer; font-family:'Inconsolata',monospace; font-size:11px; font-weight:700; letter-spacing:0.12em; padding:8px 12px; white-space:nowrap; flex-shrink:0; }
+    .btn-del { background:none; border:none; color:rgba(255,255,255,0.25); cursor:pointer; font-size:18px; padding:6px 8px; flex-shrink:0; }
+    .btn-del:active { color:var(--red); }
+    .saved-empty { font-size:12px; color:var(--muted); text-align:center; padding:20px 0; letter-spacing:0.08em; }
+    .match-row { display:flex; align-items:center; gap:10px; padding:12px; border-radius:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
+    .match-date { font-size:10px; color:var(--muted); width:80px; flex-shrink:0; }
+    .match-teams { flex:1; font-size:14px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .match-score { font-size:15px; font-weight:800; font-family:'Inconsolata',monospace; flex-shrink:0; }
+
+    /* Réglages (décimale + son) */
+    .toggle-switch { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
+    .toggle-switch:last-child { border-bottom:none; }
+    .toggle-switch-label { font-size:14px; font-weight:600; }
+    .toggle-switch-btn { width:50px; height:28px; border-radius:14px; border:none; cursor:pointer; background:rgba(128,128,128,0.25); position:relative; flex-shrink:0; }
+    .toggle-switch-btn::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:transform .15s; }
+    .toggle-switch-btn.on { background:#22c55e; }
+    .toggle-switch-btn.on::after { transform:translateX(22px); }
+    .stepper { display:flex; align-items:center; gap:10px; }
+    .stepper-btn { width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--text); font-size:18px; font-weight:800; cursor:pointer; }
+    .stepper-btn:active { background:rgba(255,255,255,0.18); }
+    .stepper-val { font-family:'Inconsolata',monospace; font-weight:800; font-size:18px; min-width:26px; text-align:center; }
+
+    /* Écrans détectés */
+    .screens-grid { display:flex; flex-direction:column; gap:8px; }
+    .screen-row { display:flex; align-items:center; gap:10px; padding:12px; border-radius:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+    .screen-dot { width:8px; height:8px; border-radius:50%; background:var(--green); flex-shrink:0; }
+    .screen-info { flex:1; }
+    .screen-name { font-size:12px; font-weight:800; letter-spacing:0.1em; color:var(--text); }
+    .screen-res { font-size:10px; letter-spacing:0.1em; color:var(--muted); margin-top:2px; }
+    .btn-screen { padding:10px 14px; border-radius:5px; border:none; cursor:pointer; font-family:'Inconsolata',monospace; font-weight:800; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; flex-shrink:0; }
+    .btn-screen-1 { background:#fff; color:#000; }
+    .btn-screen-2 { background:#1d4ed8; color:#fff; }
+    .screens-empty { font-size:11px; letter-spacing:0.1em; color:var(--muted); text-align:center; padding:16px 0; }
+    .screens-scanning { font-size:10px; letter-spacing:0.15em; color:var(--muted); text-align:center; padding:8px 0; }
+    .btn-fullscreen { padding:10px 12px; border-radius:5px; border:none; cursor:pointer; font-family:'Inconsolata',monospace; font-weight:800; font-size:14px; background:rgba(255,255,255,0.08); color:var(--muted); flex-shrink:0; }
+    .btn-fullscreen.active { background:#22c55e; color:#000; }
+
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(12px); background:#1c1c1c; border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:10px 20px; font-size:12px; letter-spacing:0.12em; color:var(--text); opacity:0; pointer-events:none; z-index:600; transition:opacity .2s,transform .2s; }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* Petit écran de secours (au cas où la résolution serait plus réduite que prévu) */
+    @media (max-height:560px), (max-width:900px) {
+      .main-stage { overflow-y:auto; justify-content:flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-logo"><img src="/logo.png" alt="Logo 3x3"></div>
+    <div class="topbar-title"><small>Basketball</small>TABLEAU 3×3</div>
+  </div>
+  <div class="topbar-icons">
+    <button class="icon-btn" onclick="openGenericModal('settingsModal')" title="Réglages">⚙</button>
+    <button class="icon-btn" onclick="openGenericModal('teamsMgmtModal')" title="Équipes enregistrées">👥</button>
+    <button class="icon-btn" id="screensIconBtn" onclick="openGenericModal('screensModal')" title="Écrans" style="display:none">🖥</button>
+    <button class="icon-btn" onclick="openGenericModal('historyModal')" title="Historique des matchs">📋</button>
+    <button class="icon-btn icon-btn-danger" id="btnShutdown" onclick="shutdownPi()" title="Éteindre le Raspberry Pi">⏻</button>
+  </div>
+</div>
+
+<div class="main-stage">
+
+  <div class="teams-row">
+    <div class="team-card">
+      <div class="field-label">Équipe gauche</div>
+      <div class="team-name-big" id="nameHome" onclick="openModal('Home')" style="color:#ff0000;border-left-color:#ff0000">LOCAUX</div>
+      <div class="color-grid" id="swatchHome"></div>
+    </div>
+    <div class="team-card">
+      <div class="field-label">Équipe droite</div>
+      <div class="team-name-big" id="nameAway" onclick="openModal('Away')" style="color:#0057ff;border-left-color:#0057ff">VISITEURS</div>
+      <div class="color-grid" id="swatchAway"></div>
+    </div>
+  </div>
+
+  <div class="settings-row">
+    <div class="settings-block">
+      <div class="field-label">Durée du match</div>
+      <div class="time-picker-container">
+        <div class="flip-group">
+          <button class="flip-btn" onclick="adjustTime('min',1)">▲</button>
+          <div class="flip-card"><input type="number" id="matchMin" class="flip-input" value="10" min="0" max="99" inputmode="numeric"></div>
+          <button class="flip-btn" onclick="adjustTime('min',-1)">▼</button>
+        </div>
+        <div class="time-separator">:</div>
+        <div class="flip-group">
+          <button class="flip-btn" onclick="adjustTime('sec',1)">▲</button>
+          <div class="flip-card"><input type="number" id="matchSec" class="flip-input" value="00" min="0" max="59" inputmode="numeric"></div>
+          <button class="flip-btn" onclick="adjustTime('sec',-1)">▼</button>
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <div class="field-label">Possession (sec)</div>
+      <div class="flip-group">
+        <button class="flip-btn" onclick="adjustPossession(1)">▲</button>
+        <div class="flip-card"><input class="flip-input" type="number" id="possMax" value="12" min="1" max="60" inputmode="numeric"></div>
+        <button class="flip-btn" onclick="adjustPossession(-1)">▼</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <button class="btn-launch" onclick="launch()">LANCER LE TABLEAU →</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <input type="hidden" id="colorHome" value="#ff0000">
+  <input type="hidden" id="colorAway" value="#0057ff">
+</div>
+
+<!-- MODALE ÉQUIPE (nom + choix parmi les équipes enregistrées) -->
+<div class="modal-overlay" id="teamModal">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">ÉQUIPE GAUCHE</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-section-label">Nom de l'équipe</div>
+        <div class="modal-name-row">
+          <input type="hidden" id="modalColor">
+          <input class="modal-name-input" id="modalNameInput" type="text" maxlength="15"
+                 placeholder="NOM ÉQUIPE" readonly
+                 onfocus="document.getElementById('onScreenKeyboard').style.display='flex'"
+                 onkeydown="if(event.key==='Enter') closeModal()">
+        </div>
+        <div class="osk" id="onScreenKeyboard" style="display:none"></div>
+        <div class="modal-preview" id="modalPreview" style="background:rgba(0,0,0,0);color:#e63946;border-left-color:#e63946">APERÇU</div>
+        <div class="modal-hint">La couleur se choisit depuis l'écran principal, pas ici.</div>
+      </div>
+      <button class="btn-save-team" onclick="saveTeam()">💾 &nbsp;Enregistrer cette équipe</button>
+      <hr class="modal-sep">
+      <div>
+        <div class="modal-section-label">Équipes enregistrées</div>
+        <div class="saved-list" id="savedList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE RÉGLAGES (décimale + son) -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-backdrop" onclick="closeGenericModal('settingsModal')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">RÉGLAGES</span>
+      <button class="modal-close" onclick="closeGenericModal('settingsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-section-label">Décimale sous 10s de possession</div>
+        <div class="toggle-switch">
+          <span class="toggle-switch-label">Tableau général (et la tactile)</span>
+          <button class="toggle-switch-btn" id="decToggleScoreboard" onclick="toggleDecOption('scoreboard')"></button>
+        </div>
+        <div class="toggle-switch">
+          <span class="toggle-switch-label">Écran de possession</span>
+          <button class="toggle-switch-btn" id="decTogglePossession" onclick="toggleDecOption('possession')"></button>
+        </div>
+      </div>
+      <hr class="modal-sep">
+      <div>
+        <div class="modal-section-label">Son</div>
+        <div class="toggle-switch">
+          <span class="toggle-switch-label">Klaxon de fin de période</span>
+          <button class="toggle-switch-btn" id="soundToggle" onclick="toggleSound()"></button>
+        </div>
+      </div>
+      <hr class="modal-sep">
+      <div>
+        <div class="modal-section-label">Fin de match ("balle de match")</div>
+        <div class="toggle-switch">
+          <span class="toggle-switch-label">Score pour gagner</span>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="adjustMatchRule('target_score',-1)">−</button>
+            <span class="stepper-val" id="targetScoreVal">21</span>
+            <button class="stepper-btn" onclick="adjustMatchRule('target_score',1)">+</button>
+          </div>
+        </div>
+        <div class="toggle-switch">
+          <span class="toggle-switch-label">Écart minimum</span>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="adjustMatchRule('win_margin',-1)">−</button>
+            <span class="stepper-val" id="winMarginVal">2</span>
+            <button class="stepper-btn" onclick="adjustMatchRule('win_margin',1)">+</button>
+          </div>
+        </div>
+        <div class="modal-hint">Le score et la bande de couleur de l'équipe concernée pulsent dès qu'un panier suffirait à terminer le match.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE ÉQUIPES ENREGISTRÉES (gestion, hors contexte d'un côté précis) -->
+<div class="modal-overlay" id="teamsMgmtModal">
+  <div class="modal-backdrop" onclick="closeGenericModal('teamsMgmtModal')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">ÉQUIPES ENREGISTRÉES</span>
+      <button class="modal-close" onclick="closeGenericModal('teamsMgmtModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="teamsManageList"><div class="saved-empty">Chargement...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE ÉCRANS DÉTECTÉS -->
+<div class="modal-overlay" id="screensModal">
+  <div class="modal-backdrop" onclick="closeGenericModal('screensModal')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">ÉCRANS DÉTECTÉS</span>
+      <button class="modal-close" onclick="closeGenericModal('screensModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="screens-grid" id="screensGrid">
+        <div class="screens-scanning">Détection en cours...</div>
+      </div>
+      <div class="status" id="displayStatus"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE HISTORIQUE DES MATCHS -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal-backdrop" onclick="closeGenericModal('historyModal')"></div>
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">HISTORIQUE DES MATCHS</span>
+      <button class="modal-close" onclick="closeGenericModal('historyModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="matchesList"><div class="saved-empty">Chargement...</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Palette fixe : blanc/noir en gris pour ressortir du fond blanc du
+// tableau, puis des couleurs primaires/secondaires vives et saturées.
+// C'est ICI qu'il faut modifier les teintes si elles ne conviennent pas.
+const COLORS = [
+  '#d9d9d9', // blanc (gris très clair)
+  '#1c1c1c', // noir (gris très foncé)
+  '#ff0000', // rouge (primaire)
+  '#0057ff', // bleu (primaire)
+  '#ffd500', // jaune (primaire)
+  '#00c853', // vert (secondaire)
+  '#ff7a00', // orange (secondaire)
+  '#8b2fe0', // violet (secondaire)
+  '#ff1f8f', // rose
+  '#9c5a1e', // marron
+];
+
+// Équipes enregistrées — persistées côté serveur (~/scoreboard-data/teams.json
+// via /api/teams), pour survivre aux redémarrages du Pi.
+let _teamsCache = [];
+let _side = null;
+
+async function fetchTeams() {
+  try {
+    const r = await fetch('/api/teams');
+    if (r.ok) _teamsCache = await r.json();
+  } catch (e) { /* on garde le cache existant si le serveur est injoignable */ }
+  return _teamsCache;
+}
+
+// Clavier tactile intégré à la page pour saisir le nom des équipes — on
+// évite volontairement de dépendre d'un clavier virtuel système (peu
+// fiable sous Wayland sur ce Pi), tout est géré ici en JS pur.
+const OSK_ROWS = [
+  ['1','2','3','4','5','6','7','8','9','0'],
+  ['A','Z','E','R','T','Y','U','I','O','P'],
+  ['Q','S','D','F','G','H','J','K','L','M'],
+  ['W','X','C','V','B','N'],
+];
+function buildOnScreenKeyboard() {
+  const osk = document.getElementById('onScreenKeyboard');
+  osk.innerHTML = '';
+  OSK_ROWS.forEach((keys, i) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'osk-row';
+    keys.forEach(k => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'osk-key'; btn.textContent = k;
+      btn.onclick = () => oskInsert(k);
+      rowEl.appendChild(btn);
+    });
+    if (i === OSK_ROWS.length - 1) {
+      const back = document.createElement('button');
+      back.type = 'button'; back.className = 'osk-key osk-back'; back.textContent = '⌫';
+      back.onclick = oskBackspace;
+      rowEl.appendChild(back);
+    }
+    osk.appendChild(rowEl);
+  });
+  const lastRow = document.createElement('div');
+  lastRow.className = 'osk-row';
+  const space = document.createElement('button');
+  space.type = 'button'; space.className = 'osk-key osk-space'; space.textContent = 'ESPACE';
+  space.onclick = () => oskInsert(' ');
+  const done = document.createElement('button');
+  done.type = 'button'; done.className = 'osk-key osk-done'; done.textContent = 'OK';
+  done.onclick = () => { document.getElementById('onScreenKeyboard').style.display = 'none'; };
+  lastRow.appendChild(space); lastRow.appendChild(done);
+  osk.appendChild(lastRow);
+}
+function oskInsert(ch) {
+  const input = document.getElementById('modalNameInput');
+  // Toujours en fin de chaîne, jamais basé sur selectionStart/End : ces
+  // valeurs ne sont pas fiables une fois que le focus est parti sur le
+  // bouton du clavier tactile (ce qui arrive à chaque frappe), ce qui
+  // provoquait une réinitialisation du curseur en position 0.
+  if (input.maxLength > 0 && input.value.length >= input.maxLength) return;
+  input.value += ch;
+  refreshModalPreview();
+}
+function oskBackspace() {
+  const input = document.getElementById('modalNameInput');
+  input.value = input.value.slice(0, -1);
+  refreshModalPreview();
+}
+buildOnScreenKeyboard();
+
+// Son
+let soundEnabled = localStorage.getItem('soundEnabled') !== '0';
+function updateSoundUI() {
+  document.getElementById('soundToggle').classList.toggle('on', soundEnabled);
+}
+function toggleSound() { soundEnabled = !soundEnabled; localStorage.setItem('soundEnabled', soundEnabled ? '1' : '0'); updateSoundUI(); }
+updateSoundUI();
+
+// Pi detection
+const isPi = window.innerHeight <= 650 || /armv|aarch64/i.test(navigator.userAgent) || ['scoreboard.local','192.168.4.1'].includes(location.hostname);
+if (isPi) document.getElementById('screensIconBtn').style.display = 'flex';
+
+// Swatches page principale
+function buildSwatches(side) {
+  const el = document.getElementById('swatch' + side);
+  const cv = document.getElementById('color' + side).value;
+  COLORS.forEach(col => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (col.toLowerCase() === cv.toLowerCase() ? ' active' : '');
+    s.style.background = col;
+    s.onclick = () => { document.getElementById('color' + side).value = col; syncColor(side); };
+    el.appendChild(s);
+  });
+}
+function syncColor(side) {
+  const c = document.getElementById('color' + side).value;
+  const nameEl = document.getElementById('name' + side);
+  nameEl.style.color = c;
+  nameEl.style.borderLeftColor = c;
+  document.querySelectorAll('#swatch' + side + ' .swatch').forEach(s => s.classList.toggle('active', s.style.backgroundColor === hexToRgb(c)));
+}
+function hexToRgb(h) { const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return `rgb(${r}, ${g}, ${b})`; }
+
+// Modale équipe
+async function openModal(side) {
+  _side = side;
+  document.getElementById('modalTitle').textContent = side === 'Home' ? 'ÉQUIPE GAUCHE' : 'ÉQUIPE DROITE';
+  const name  = document.getElementById('name' + side).textContent;
+  const color = document.getElementById('color' + side).value;
+  document.getElementById('modalNameInput').value = name;
+  document.getElementById('modalColor').value = color;
+  refreshModalPreview();
+  document.getElementById('teamModal').classList.add('open');
+  await fetchTeams();
+  renderSavedList();
+}
+
+function closeModal() {
+  applyToCurrent();
+  document.getElementById('onScreenKeyboard').style.display = 'none';
+  document.getElementById('teamModal').classList.remove('open');
+}
+
+function applyToCurrent() {
+  if (!_side) return;
+  const name  = document.getElementById('modalNameInput').value.trim().toUpperCase();
+  const color = document.getElementById('modalColor').value;
+  if (!name) return;
+  document.getElementById('name' + _side).textContent = name;
+  document.getElementById('color' + _side).value = color;
+  syncColor(_side);
+}
+
+// La couleur ne se choisit plus dans la modale (doublon avec la page
+// principale) — #modalColor est un simple champ caché qui porte la valeur,
+// juste pour teinter l'aperçu du nom.
+function refreshModalPreview() {
+  const name  = document.getElementById('modalNameInput').value.trim().toUpperCase() || 'APERÇU';
+  const color = document.getElementById('modalColor').value;
+  const el    = document.getElementById('modalPreview');
+  el.textContent = name;
+  el.style.color = color; el.style.borderLeftColor = color; el.style.background = color + '1f';
+}
+
+async function saveTeam() {
+  const name  = document.getElementById('modalNameInput').value.trim().toUpperCase();
+  const color = document.getElementById('modalColor').value;
+  if (!name) return;
+  // On retrouve une équipe existante par son nom pour la mettre à jour
+  // (même id) plutôt que d'en créer une nouvelle à chaque enregistrement.
+  await fetchTeams();
+  const existing = _teamsCache.find(t => t.name === name);
+  try {
+    const r = await fetch('/api/teams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: existing ? existing.id : '', name, color })
+    });
+    if (!r.ok) throw new Error('save failed');
+    await fetchTeams();
+    renderSavedList();
+    renderTeamsManageList();
+    showToast('✓ ' + name + ' enregistrée');
+  } catch (e) {
+    showToast('✗ Échec de l\'enregistrement (serveur injoignable ?)');
+  }
+}
+
+function loadTeam(name, color) {
+  document.getElementById('modalNameInput').value = name;
+  document.getElementById('modalColor').value = color;
+  refreshModalPreview();
+}
+
+async function deleteTeam(id) {
+  try { await fetch('/api/teams?id=' + encodeURIComponent(id), { method: 'DELETE' }); } catch (e) {}
+  await fetchTeams();
+  renderSavedList();
+  renderTeamsManageList();
+}
+
+function renderSavedList() {
+  const el = document.getElementById('savedList');
+  const teams = _teamsCache;
+  el.innerHTML = '';
+  if (!teams.length) { el.innerHTML = '<div class="saved-empty">Aucune équipe enregistrée</div>'; return; }
+  teams.forEach(({ id, name, color }) => {
+    const safeName = name.replace(/'/g,"\\'");
+    const row  = document.createElement('div');
+    row.className = 'saved-row';
+    row.innerHTML = `<div class="saved-dot" style="background:${color}"></div><div class="saved-name" onclick="loadTeam('${safeName}','${color}')">${name}</div><button class="btn-load" onclick="loadTeam('${safeName}','${color}')">CHOISIR</button><button class="btn-del" onclick="deleteTeam('${id}')">🗑</button>`;
+    el.appendChild(row);
+  });
+}
+
+// ── Gestion des équipes enregistrées (modale dédiée, hors contexte d'un côté) ──
+async function loadTeamsManage() {
+  await fetchTeams();
+  renderTeamsManageList();
+}
+
+function renderTeamsManageList() {
+  const el = document.getElementById('teamsManageList');
+  if (!el) return;
+  const teams = _teamsCache;
+  el.innerHTML = '';
+  if (!teams.length) { el.innerHTML = '<div class="saved-empty">Aucune équipe enregistrée</div>'; return; }
+  teams.forEach(({ id, name, color }) => {
+    const safeName = name.replace(/'/g,"\\'");
+    const row = document.createElement('div');
+    row.className = 'saved-row';
+    row.innerHTML = `<div class="saved-dot" style="background:${color}"></div><div class="saved-name" style="cursor:default">${name}</div><button class="btn-del" onclick="deleteTeamManage('${id}','${safeName}')" title="Supprimer">🗑</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function deleteTeamManage(id, name) {
+  if (!confirm('Supprimer l\'équipe "' + name + '" ? (utile pour repartir propre à chaque tournoi)')) return;
+  await deleteTeam(id);
+}
+
+// ── Historique des matchs ──
+async function loadMatches() {
+  const el = document.getElementById('matchesList');
+  try {
+    const r = await fetch('/api/matches');
+    if (!r.ok) throw new Error('fetch failed');
+    renderMatches(await r.json());
+  } catch (e) {
+    el.innerHTML = '<div class="saved-empty">Impossible de charger l\'historique</div>';
+  }
+}
+
+function renderMatches(list) {
+  const el = document.getElementById('matchesList');
+  el.innerHTML = '';
+  if (!list.length) { el.innerHTML = '<div class="saved-empty">Aucun match enregistré</div>'; return; }
+  // Déjà trié du plus récent au plus ancien par le serveur.
+  list.forEach(m => {
+    const d = new Date(m.date);
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+      + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const row = document.createElement('div');
+    row.className = 'match-row';
+    row.innerHTML = `<span class="match-date">${dateStr}</span><span class="match-teams">${m.home_team} <span style="opacity:.4">vs</span> ${m.away_team}</span><span class="match-score">${m.score_home} – ${m.score_away}</span><button class="btn-del" onclick="deleteMatch('${m.id}')" title="Supprimer">🗑</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function deleteMatch(id) {
+  if (!confirm('Supprimer ce match de l\'historique ?')) return;
+  try {
+    await fetch('/api/matches?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    loadMatches();
+  } catch (e) { showToast('✗ Échec de la suppression'); }
+}
+
+let _toastTmr;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_toastTmr); _toastTmr = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// Durée / Possession
+function adjustTime(type, amount) {
+  const id = type === 'min' ? 'matchMin' : 'matchSec';
+  const input = document.getElementById(id);
+  let val = parseInt(input.value) + amount;
+  if (type === 'sec') { if (val > 59) { val = 0; adjustTime('min',1); } if (val < 0) { val = 59; adjustTime('min',-1); } }
+  if (val < 0) val = 0;
+  if (type === 'min' && val > 99) val = 99;
+  input.value = val.toString().padStart(2,'0');
+}
+function adjustPossession(amount) {
+  const input = document.getElementById('possMax');
+  let val = (parseInt(input.value) || 0) + amount;
+  if (val < 1) val = 1; if (val > 60) val = 60;
+  input.value = val;
+}
+
+// ── Détection écrans (uniquement pendant que la modale est ouverte) ──
+let _screensCache = [];
+let _screensPollTimer = null;
+
+async function pollScreens() {
+  try {
+    const r = await fetch('/api/screens');
+    if (!r.ok) return;
+    const screens = await r.json();
+    renderScreens(screens);
+    _screensCache = screens;
+  } catch {}
+}
+
+function renderScreens(screens) {
+  const grid = document.getElementById('screensGrid');
+  if (!screens || screens.length === 0) {
+    grid.innerHTML = '<div class="screens-empty">Aucun écran HDMI détecté</div>';
+    return;
+  }
+  grid.innerHTML = '';
+  screens.forEach(s => {
+    const isScoreboard = s.hdmi === 1;
+    const label  = isScoreboard ? 'TABLEAU' : 'POSSESSION';
+    const cls    = isScoreboard ? 'btn-screen-1' : 'btn-screen-2';
+    const output = s.name;
+    const title  = isScoreboard ? 'Tableau' : 'Possession';
+    const row    = document.createElement('div');
+    row.className = 'screen-row';
+    row.id = `screen-row-${s.hdmi}`;
+    row.innerHTML = `
+      <div class="screen-dot"></div>
+      <div class="screen-info">
+        <div class="screen-name">HDMI ${s.hdmi} — ${label}</div>
+        <div class="screen-res">${s.width}×${s.height} · ${parseFloat(s.refresh_hz).toFixed(0)} Hz</div>
+      </div>
+      <button class="btn-screen ${cls}" onclick="launchScreen(${s.hdmi},'${output}','${title}')">OUVRIR →</button>
+      <button class="btn-fullscreen" id="fs-btn-${s.hdmi}" onclick="fullscreenWindow('${title}','${output}',${s.hdmi})">⛶</button>
+    `;
+    grid.appendChild(row);
+  });
+}
+
+async function launchScreen(hdmiNum, output, title) {
+  const s = document.getElementById('displayStatus');
+  s.textContent = `Ouverture HDMI ${hdmiNum}...`; s.className = 'status';
+  try {
+    const r = await fetch('/api/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hdmi: hdmiNum })
+    });
+    const data = r.ok ? await r.json() : null;
+    if (!data || !data.ok) {
+      s.textContent = `✗ Erreur (${r.status})`; s.className = 'status err';
+      return;
+    }
+    s.textContent = `⏳ Chargement... (déplacement dans 5s)`;
+    s.className = 'status';
+
+    setTimeout(async () => {
+      try {
+        const m = await fetch('/api/move-to-hdmi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ output, title })
+        });
+        const md = m.ok ? await m.json() : null;
+        if (md && md.ok) {
+          s.textContent = `✓ ${data.resolution} — déplacé sur ${output}`;
+          s.className = 'status ok';
+        } else {
+          s.textContent = `✓ Ouvert — déplacement manuel peut être nécessaire`;
+          s.className = 'status ok';
+        }
+      } catch {
+        s.textContent = `✓ Ouvert sur HDMI ${hdmiNum}`;
+        s.className = 'status ok';
+      }
+    }, 5000);
+
+  } catch { s.textContent = '✗ Serveur non joignable'; s.className = 'status err'; }
+}
+
+async function fullscreenWindow(title, output, hdmiNum) {
+  const s = document.getElementById('displayStatus');
+  const btn = document.getElementById(`fs-btn-${hdmiNum}`);
+  s.textContent = `Mise en plein écran...`; s.className = 'status';
+  try {
+    const r = await fetch('/api/fullscreen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, output })
+    });
+    const data = r.ok ? await r.json() : null;
+    if (data && data.ok) {
+      s.textContent = `✓ Plein écran sur ${output}`; s.className = 'status ok';
+      if (btn) { btn.classList.add('active'); btn.textContent = '✓'; }
+    } else {
+      s.textContent = `✗ Erreur — déplacez d'abord la fenêtre sur l'écran`; s.className = 'status err';
+    }
+  } catch { s.textContent = '✗ Serveur non joignable'; s.className = 'status err'; }
+}
+
+// Lancer
+async function launch() {
+  const status = document.getElementById('status');
+  status.textContent = 'Enregistrement...'; status.className = 'status';
+  const mins = parseInt(document.getElementById('matchMin').value) || 0;
+  const secs = parseInt(document.getElementById('matchSec').value) || 0;
+  const payload = { team_home_name: document.getElementById('nameHome').textContent, team_away_name: document.getElementById('nameAway').textContent, team_home_color: document.getElementById('colorHome').value, team_away_color: document.getElementById('colorAway').value, match_duration: (mins*60)+secs, poss_max: parseFloat(document.getElementById('possMax').value), reset_match: true };
+  try {
+    const res = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    if (res.ok) { status.className = 'status ok'; status.textContent = '✓ Configuration prête !'; window.open('/scoreboard?ctrl=1','_blank'); }
+  } catch(e) { status.className = 'status err'; status.textContent = '✗ Erreur de connexion au serveur.'; }
+}
+
+// Réglages de décimale — persistés côté serveur (préférence d'affichage,
+// pas un réglage par match : effet immédiat sur tous les écrans déjà
+// ouverts via la diffusion WebSocket normale de l'état).
+let _decOptions = { show_dec_scoreboard: false, show_dec_possession: false };
+
+function renderDecToggles() {
+  document.getElementById('decToggleScoreboard').classList.toggle('on', _decOptions.show_dec_scoreboard);
+  document.getElementById('decTogglePossession').classList.toggle('on', _decOptions.show_dec_possession);
+}
+
+async function loadDecOptions() {
+  try {
+    const r = await fetch('/api/display-options');
+    if (r.ok) _decOptions = await r.json();
+  } catch (e) { /* on garde les valeurs par défaut si le serveur est injoignable */ }
+  renderDecToggles();
+}
+
+async function toggleDecOption(which) {
+  if (which === 'scoreboard') _decOptions.show_dec_scoreboard = !_decOptions.show_dec_scoreboard;
+  else _decOptions.show_dec_possession = !_decOptions.show_dec_possession;
+  renderDecToggles();
+  try {
+    await fetch('/api/display-options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_decOptions)
+    });
+  } catch (e) { showToast('✗ Échec de l\'enregistrement (serveur injoignable ?)'); }
+}
+
+// Règle de fin de match ("balle de match") — persistante côté serveur,
+// pas remise à zéro par "lancer le tableau" contrairement au score.
+let _matchRules = { target_score: 21, win_margin: 2 };
+
+function renderMatchRules() {
+  document.getElementById('targetScoreVal').textContent = _matchRules.target_score;
+  document.getElementById('winMarginVal').textContent = _matchRules.win_margin;
+}
+
+async function loadMatchRules() {
+  try {
+    const r = await fetch('/api/match-rules');
+    if (r.ok) _matchRules = await r.json();
+  } catch (e) { /* on garde les valeurs par défaut si le serveur est injoignable */ }
+  renderMatchRules();
+}
+
+async function adjustMatchRule(which, delta) {
+  _matchRules[which] = Math.max(1, (_matchRules[which] || 0) + delta);
+  renderMatchRules();
+  try {
+    await fetch('/api/match-rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_matchRules)
+    });
+  } catch (e) { showToast('✗ Échec de l\'enregistrement (serveur injoignable ?)'); }
+}
+
+// Extinction du Pi depuis l'écran de configuration — utilise le même
+// endpoint que la modale d'extinction déclenchée par le bouton power
+// physique (/api/shutdown/confirm).
+async function shutdownPi() {
+  if (!confirm('Éteindre le Raspberry Pi maintenant ?\n\nLe tableau ne sera plus accessible tant qu\'il ne sera pas rallumé manuellement.')) return;
+  const btn = document.getElementById('btnShutdown');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    await fetch('/api/shutdown/confirm', { method: 'POST' });
+  } catch (e) {
+    // Normal : le serveur s'arrête avant d'avoir pu répondre à la requête.
+  }
+}
+
+// ── Modales génériques (réglages, équipes, écrans, historique) ──
+// Chaque modale charge ses données seulement à l'ouverture, plutôt que de
+// tout précharger au démarrage de la page — l'écran principal doit rester
+// simple et rapide à afficher.
+function openGenericModal(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'settingsModal')  { loadDecOptions(); updateSoundUI(); loadMatchRules(); }
+  if (id === 'teamsMgmtModal') { loadTeamsManage(); }
+  if (id === 'historyModal')   { loadMatches(); }
+  if (id === 'screensModal')   { pollScreens(); _screensPollTimer = setInterval(pollScreens, 4000); }
+}
+function closeGenericModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'screensModal' && _screensPollTimer) { clearInterval(_screensPollTimer); _screensPollTimer = null; }
+}
+
+buildSwatches('Home');
+buildSwatches('Away');
+</script>
+
+<!-- ══ MODALE SHUTDOWN ══════════════════════════════════════════ -->
+<style>
+  .shutdown-overlay {
+    display: none; position: fixed; inset: 0; z-index: 900;
+    align-items: center; justify-content: center;
+  }
+  .shutdown-overlay.open { display: flex; }
+  .shutdown-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(12px);
+  }
+  .shutdown-panel {
+    position: relative; background: #111; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 28px 32px; max-width: 340px; width: 90%;
+    text-align: center;
+    animation: sdPop .22s cubic-bezier(0.32,0.72,0,1);
+  }
+  @keyframes sdPop { from { transform: scale(0.88); opacity:0; } to { transform: scale(1); opacity:1; } }
+  .shutdown-icon { font-size: 36px; margin-bottom: 12px; }
+  .shutdown-title {
+    font-family: 'Inconsolata', monospace; font-weight: 800;
+    font-size: 16px; letter-spacing: 0.18em; color: #f5f5f5; margin-bottom: 8px;
+  }
+  .shutdown-sub {
+    font-family: 'Inconsolata', monospace; font-size: 11px;
+    letter-spacing: 0.12em; color: rgba(255,255,255,0.4); margin-bottom: 20px;
+  }
+  .shutdown-countdown {
+    font-family: 'Inconsolata', monospace; font-weight: 800;
+    font-size: 28px; color: #ef4444; margin-bottom: 20px; line-height: 1;
+  }
+  .shutdown-btns { display: flex; gap: 10px; }
+  .btn-cancel-sd {
+    flex: 1; padding: 11px; background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 5px;
+    color: #f5f5f5; font-family: 'Inconsolata', monospace;
+    font-weight: 700; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: background .15s;
+  }
+  .btn-cancel-sd:hover { background: rgba(255,255,255,0.14); }
+  .btn-confirm-sd {
+    flex: 1; padding: 11px; background: #ef4444;
+    border: none; border-radius: 5px;
+    color: #fff; font-family: 'Inconsolata', monospace;
+    font-weight: 800; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: opacity .15s;
+  }
+  .btn-confirm-sd:hover { opacity: 0.85; }
+</style>
+
+<div class="shutdown-overlay" id="shutdownOverlay">
+  <div class="shutdown-backdrop" onclick="cancelShutdown()"></div>
+  <div class="shutdown-panel">
+    <div class="shutdown-icon">⏻</div>
+    <div class="shutdown-title">ÉTEINDRE LE PI ?</div>
+    <div class="shutdown-sub">Extinction automatique dans</div>
+    <div class="shutdown-countdown" id="sdCountdown">10</div>
+    <div class="shutdown-btns">
+      <button class="btn-cancel-sd" onclick="cancelShutdown()">ANNULER</button>
+      <button class="btn-confirm-sd" onclick="confirmShutdown()">ÉTEINDRE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Modale shutdown ──────────────────────────────────────────────
+let _sdTimer = null;
+let _sdCount = 10;
+
+function openShutdownModal() {
+  _sdCount = 10;
+  document.getElementById('sdCountdown').textContent = _sdCount;
+  document.getElementById('shutdownOverlay').classList.add('open');
+  _sdTimer = setInterval(() => {
+    _sdCount--;
+    document.getElementById('sdCountdown').textContent = _sdCount;
+    if (_sdCount <= 0) {
+      clearInterval(_sdTimer);
+      confirmShutdown();
+    }
+  }, 1000);
+}
+
+function cancelShutdown() {
+  clearInterval(_sdTimer);
+  document.getElementById('shutdownOverlay').classList.remove('open');
+}
+
+function confirmShutdown() {
+  clearInterval(_sdTimer);
+  document.getElementById('shutdownOverlay').classList.remove('open');
+  fetch('/api/shutdown/confirm', { method: 'POST' }).catch(() => {});
+}
+// ────────────────────────────────────────────────────────────────
+</script>
+
+
+<script>
+// Listener WebSocket minimal pour recevoir shutdown_request sur la page config
+(function() {
+  let _cfgWs = null;
+  function cfgConnect() {
+    _cfgWs = new WebSocket('ws://' + location.host + '/ws');
+    _cfgWs.onmessage = function(e) {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.type === 'shutdown_request') openShutdownModal();
+      } catch(err) {}
+    };
+    _cfgWs.onerror = function() { _cfgWs.close(); };
+    _cfgWs.onclose = function() { setTimeout(cfgConnect, 2000); };
+  }
+  cfgConnect();
+})();
+</script>
+</body>
+</html>

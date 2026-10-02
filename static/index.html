@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoreboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inconsolata', monospace;
+      font-weight: 800;
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .blend { color: #fff; mix-blend-mode: difference; }
+
+    .container {
+      width: 100vw; height: 100vh;
+      display: grid;
+      grid-template-columns: 5fr 4fr 5fr;
+      grid-template-rows: auto 1fr auto;
+      padding: 2.5vh 2.5vw;
+    }
+
+    /* ── Noms + dots + chrono ── */
+    .team-header { display: flex; flex-direction: column; gap: 1vh; }
+    .team-header.left  { align-items: flex-start; }
+    .team-header.right { align-items: flex-end; }
+    .team-bar { height: 8px; width: 100%; border-radius: 3px; margin-bottom: 2px; }
+
+    /* Balle de match : un panier de cette équipe suffirait à terminer le
+       match (cf. réglage score cible / écart minimum). Pulsation douce,
+       ambrée pour ne pas se confondre avec l'urgence rouge de possession. */
+    /* Balle de match : le score (.blend) est en mix-blend-mode, donc tout
+       effet de couleur posé directement dessus (text-shadow, etc.) se fait
+       lui-même "fusionner" avec le fond et dérive de teinte au fil du
+       temps — c'est ce qui donnait cet effet bleuté indésirable. On pose
+       donc l'effet ailleurs : un halo de fond DERRIÈRE le score (hors du
+       mode fusion) et une bande d'équipe nettement amplifiée.
+       Ambré = un panier à 2 points suffirait. Rouge = n'importe quel
+       panier suffirait (plus critique, pulsation plus rapide/marquée). */
+    @keyframes matchPointWash         { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.75; } }
+    @keyframes matchPointWashCritical { 0%, 100% { opacity: 0.3;  } 50% { opacity: 1;    } }
+    @keyframes matchPointBar          { 0%, 100% { transform: scaleY(1);   box-shadow: none; } 50% { transform: scaleY(2.4); box-shadow: 0 0 22px 4px rgba(255,197,66,0.9); } }
+    @keyframes matchPointBarCritical  { 0%, 100% { transform: scaleY(1);   box-shadow: none; } 50% { transform: scaleY(3);   box-shadow: 0 0 28px 6px rgba(239,68,68,0.95); } }
+
+    .score-cell { position: relative; }
+    .score-cell::before {
+      content: ""; position: absolute; inset: 6%; border-radius: 28px;
+      opacity: 0; pointer-events: none; z-index: 0;
+    }
+    .score { position: relative; z-index: 1; }
+    .score-cell.match-point::before {
+      background: radial-gradient(ellipse at center, rgba(255,197,66,0.55) 0%, rgba(255,197,66,0) 72%);
+      animation: matchPointWash 1.4s ease-in-out infinite;
+    }
+    .score-cell.match-point-critical::before {
+      background: radial-gradient(ellipse at center, rgba(239,68,68,0.6) 0%, rgba(239,68,68,0) 72%);
+      animation: matchPointWashCritical 0.9s ease-in-out infinite;
+    }
+    .team-bar.match-point          { animation: matchPointBar 1.4s ease-in-out infinite; transform-origin: center; }
+    .team-bar.match-point-critical { animation: matchPointBarCritical 0.9s ease-in-out infinite; transform-origin: center; }
+    .team-name { font-size: clamp(23px, 3.6vw, 6.2vh); letter-spacing: 0.1em; text-transform: uppercase; line-height: 1; }
+
+    /* ── Système fautes ── */
+    .fouls-zone { display: flex; flex-direction: column; gap: 0.5vh; width: 100%; cursor: pointer; user-select: none; }
+    .foul-rects-row { display: flex; width: 100%; border-radius: 3px; overflow: hidden; height: 2.6vh; }
+    .foul-rect { display: flex; height: 100%; transition: all 0.3s; }
+
+    .foul-rect.r1 { 
+      flex: 6; background: rgba(128,128,128,0.4); 
+      --z-color-trans: rgba(34,197,94, 0.15); --z-color-opaque: rgba(34,197,94, 1); 
+    }
+    .foul-rect.r2 { 
+      flex: 3; background: rgba(128,128,128,0.3); border-left: 1px solid rgba(255,255,255,0.1);
+      --z-color-trans: rgba(247, 107, 7, 0.2); --z-color-opaque: rgba(247, 107, 7, 1);
+    }
+    .foul-rect.r3 { 
+      flex: 1; background: rgba(128,128,128,0.2); border-left: 1px solid rgba(255,255,255,0.1);
+      --z-color-trans: rgba(239,68,68, 0.2);   --z-color-opaque: rgba(239,68,68, 1);
+    }
+
+    .foul-cell {
+      flex: 1; display: flex; align-items: center; justify-content: center; height: 100%;
+      background: transparent; transition: background-color 0.2s ease;
+    }
+    .foul-rect.active .foul-cell { background: var(--z-color-trans); }
+    .foul-rect.active .foul-cell.committed { background: var(--z-color-opaque); }
+
+    .foul-dot {
+      width: clamp(5px, 1.1vh, 10px); height: clamp(5px, 1.1vh, 10px);
+      border-radius: 50%; transition: all 0.2s;
+    }
+    .foul-dot.active { background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.4); }
+    .foul-dot.off    { background: rgba(255,255,255,0.2); }
+
+    .foul-icons-row { display: flex; align-items: center; gap: 0.5vw; height: 4vh; opacity: 0; transition: opacity 0.3s; }
+    .foul-icons-row.visible { opacity: 1; }
+    .foul-icon { height: 100%; width: auto; object-fit: contain; mix-blend-mode: difference;}
+
+    .chrono-header { display: flex; align-items: flex-start; justify-content: center; padding: 0 1vw; }
+    .game-time { font-size: clamp(50px, 8.2vw, 14.5vh); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; white-space: nowrap; line-height: 1; }
+
+    /* ── Scores + possession ── */
+    .score-cell { display: flex; align-items: center; justify-content: center; }
+    .score { font-size: clamp(120px, 21vw, 72vh); line-height: 1; font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; }
+    .poss-cell { display: flex; padding: 1.5vh 2vw; }
+    .poss-outer { flex: 1; position: relative; overflow: visible; cursor: pointer; user-select: none; }
+
+    @keyframes pulse-out {
+      0%   { box-shadow: 0 0 0 0px   rgba(239,68,68,0.65); }
+      70%  { box-shadow: 0 0 0 100px rgba(239,68,68,0);    }
+      100% { box-shadow: 0 0 0 0px   rgba(239,68,68,0);    }
+    }
+    @keyframes quake {
+      0%   { transform: translate(0,0); }
+      10%  { transform: translate(-4px, 2px); }
+      20%  { transform: translate(4px, -2px); }
+      50%  { transform: translate(-5px, 2px); }
+      100% { transform: translate(0,0); }
+    }
+
+    .poss-outer.urgent { animation: pulse-out 0.75s infinite; }
+    .poss-outer.quake  { animation: pulse-out 0.75s infinite, quake 0.12s linear infinite; }
+
+    .poss-inner { position: absolute; inset: 0; overflow: hidden; background: #fff; border: 4px solid rgb(80, 80, 80); transition: border-color 0.3s ease; }
+    .poss-outer.urgent .poss-inner, .poss-outer.quake .poss-inner { border-color: #ef4444; }
+    .poss-fill { position: absolute; bottom: 0; left: 0; right: 0; height: 100%; transition: height 0.1s linear, background-color 0.4s ease; background-color: #22c55e; }
+    .poss-num { position: absolute; inset: 0; display: flex; align-items: baseline; justify-content: center; padding-bottom: 4%; line-height: 1; }
+    .text-dark  { color: #1a1a1a; z-index: 2; }
+    .text-light { color: #ffffff; z-index: 3; transition: clip-path 0.1s linear; }
+    .poss-sec { font-size: clamp(52px, 8vw, 19vh); font-variant-numeric: tabular-nums; line-height: 1; }
+    .poss-dec { font-size: clamp(22px, 3.4vw, 8vh); font-variant-numeric: tabular-nums; line-height: 1; padding-bottom: 0.06em; opacity: 0.9; }
+
+    /* ── Status ── */
+    /* Masqué par défaut (écran HDMI, public) : uniquement visible en mode
+       opérateur (URL avec ?ctrl=1, ouverte depuis config.html sur la
+       tactile). Voir le script plus bas qui bascule ça. */
+    .status-row { grid-column: 1 / -1; display: none; justify-content: flex-end; align-items: center; padding-top: 1vh; }
+    .right-controls { display: flex; gap: 8px; align-items: center; }
+    .possession { background: rgba(128,128,128,0.15); color: rgba(128,128,128,0.45); text-decoration: none; font-size: 1.1vh; padding: 0.4vh 1vh; border-radius: 2px; display: inline-block; }
+    .btn-end-match, .btn-discard-match {
+      font-family: inherit; font-weight: 800; font-size: 1.3vh; letter-spacing: 0.1em;
+      padding: 0.6vh 1.4vh; border-radius: 3px; cursor: pointer; border: none;
+    }
+    .btn-end-match { background: #22c55e; color: #06210f; }
+    .btn-discard-match { background: rgba(128,128,128,0.18); color: rgba(255,255,255,0.55); }
+    .btn-end-match:active, .btn-discard-match:active { opacity: 0.8; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="team-header left">
+    <div class="team-bar" id="barHome"></div>
+    <div class="team-name blend" id="nameHome">ÉQUIPE 1</div>
+    <div class="fouls-zone" id="foulsHome">
+      <div class="foul-rects-row" id="rectsHome"></div>
+      <div class="foul-icons-row" id="iconsHome"></div>
+    </div>
+  </div>
+
+  <div class="chrono-header">
+    <span class="game-time blend" id="gameTime">10:00</span>
+  </div>
+
+  <div class="team-header right">
+    <div class="team-bar" id="barAway"></div>
+    <div class="team-name blend" id="nameAway">ÉQUIPE 2</div>
+    <div class="fouls-zone" id="foulsAway">
+      <div class="foul-rects-row" id="rectsAway"></div>
+      <div class="foul-icons-row" id="iconsAway"></div>
+    </div>
+  </div>
+
+  <div class="score-cell" id="scoreCellHome">
+    <span class="score blend" id="scoreHome">0</span>
+  </div>
+
+  <div class="poss-cell">
+    <div class="poss-outer" id="possOuter">
+      <div class="poss-inner">
+        <div class="poss-fill" id="possFill"></div>
+        <div class="poss-num text-dark">
+          <span class="poss-sec" id="possSecDark">12</span>
+          <span class="poss-dec" id="possDecDark" style="display:none"></span>
+        </div>
+        <div class="poss-num text-light" id="possNumLight">
+          <span class="poss-sec" id="possSecLight">12</span>
+          <span class="poss-dec" id="possDecLight" style="display:none"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="score-cell" id="scoreCellAway">
+    <span class="score blend" id="scoreAway">0</span>
+  </div>
+
+  <div class="status-row" id="statusRow">
+    <div class="right-controls">
+      <a href="possession" target="_blank" class="possession">POSSESSION</a>
+      <button class="btn-discard-match" onclick="endMatchDiscard()">✕ QUITTER SANS ENREGISTRER</button>
+      <button class="btn-end-match" onclick="endMatchSave()">🏁 TERMINER + ENREGISTRER</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ws = null;
+  let lastState = null;
+  let prevPossTime = null;
+  let prevGameTime = null;
+  let prevFoulsHome = null;
+  let prevFoulsAway = null;
+  const horn = new Audio('/horn.mp3');
+  let soundEnabled = localStorage.getItem('soundEnabled') !== '0';
+
+  function playHorn() { if (soundEnabled) { horn.currentTime = 0; horn.play().catch(()=>{}); } }
+  function stopHorn() { horn.pause(); horn.currentTime = 0; }
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onerror = () => ws.close();
+    ws.onclose = () => { setTimeout(connect, 2000); };
+    ws.onmessage = e => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'shutdown_request') { openShutdownModal(); return; }
+      if (data.type === 'horn') { playHorn(); return; }
+      lastState = data; render(lastState);
+    };
+  }
+
+  function send(action, value) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action, value: value || 0 })); }
+
+  function render(s) {
+    document.getElementById('scoreHome').textContent = s.score_home;
+    document.getElementById('scoreAway').textContent = s.score_away;
+
+    // Balle de match, deux niveaux selon le score cible et l'écart minimum
+    // réglés dans Réglages (21 / 2 par défaut) :
+    //  - "2pts" : seul un panier à 2 points suffirait à terminer le match
+    //  - "critique" : n'importe quel panier (1 ou 2 points) suffirait —
+    //    strictement plus avancé que "2pts" (si 1 point suffit, 2 points
+    //    suffisent toujours aussi), donc traitement visuel plus marqué.
+    const targetScore = s.target_score || 21, winMargin = s.win_margin || 2;
+    const canWinWith1 = (mine, theirs) => mine + 1 >= targetScore && mine + 1 - theirs >= winMargin;
+    const canWinWith2 = (mine, theirs) => mine + 2 >= targetScore && mine + 2 - theirs >= winMargin;
+    function matchPointLevel(mine, theirs) {
+      if (canWinWith1(mine, theirs)) return 'critical';
+      if (canWinWith2(mine, theirs)) return 'soft';
+      return null;
+    }
+    function applyMatchPoint(side, level) {
+      const cellEl = document.getElementById('scoreCell' + side), barEl = document.getElementById('bar' + side);
+      cellEl.classList.toggle('match-point', level === 'soft');
+      barEl.classList.toggle('match-point', level === 'soft');
+      cellEl.classList.toggle('match-point-critical', level === 'critical');
+      barEl.classList.toggle('match-point-critical', level === 'critical');
+    }
+    applyMatchPoint('Home', matchPointLevel(s.score_home, s.score_away));
+    applyMatchPoint('Away', matchPointLevel(s.score_away, s.score_home));
+    const m = Math.floor(s.game_time / 60), sec = Math.floor(s.game_time % 60);
+    document.getElementById('gameTime').textContent = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+
+    // Horizon
+    const duration = s.match_duration || 600;
+    const h = ((duration - s.game_time) / duration) * 100;
+    document.body.style.background = `linear-gradient(to bottom, #fff ${h.toFixed(2)}%, #000 ${h.toFixed(2)}%)`;
+
+    // Possession
+    const pt = s.poss_time, possMax = s.poss_max || 12, fillPct = Math.max(0, (pt / possMax) * 100);
+    document.getElementById('possSecDark').textContent = Math.floor(pt);
+    document.getElementById('possSecLight').textContent = Math.floor(pt);
+    const decDark = document.getElementById('possDecDark'), decLight = document.getElementById('possDecLight');
+    if (s.show_dec_scoreboard && pt < 10) {
+      const dv = '.' + Math.floor((pt % 1) * 10);
+      decDark.textContent = decLight.textContent = dv;
+      decDark.style.display = decLight.style.display = '';
+    } else { decDark.style.display = decLight.style.display = 'none'; }
+    document.getElementById('possFill').style.height = fillPct.toFixed(2) + '%';
+    document.getElementById('possFill').style.backgroundColor = (pt >= 9 ? '#22c55e' : pt >= 6 ? '#eab308' : pt >= 3 ? '#f97316' : '#ef4444');
+    const clipVal = `inset(${(100 - fillPct).toFixed(2)}% 0 0 0)`;
+    document.getElementById('possNumLight').style.clipPath = clipVal;
+
+    // Sons
+    if (prevPossTime !== null && prevPossTime > 0 && pt === 0) playHorn();
+    if (prevGameTime !== null && prevGameTime > 0 && s.game_time === 0) playHorn();
+    prevPossTime = pt; prevGameTime = s.game_time;
+
+    // Urgence
+    const outer = document.getElementById('possOuter');
+    outer.classList.remove('urgent', 'quake');
+    if (pt <= 2 && pt > 0) outer.classList.add('quake'); else if (pt <= 3 && pt > 0) outer.classList.add('urgent');
+
+    // renderFouls reconstruit une dizaine d'éléments DOM à chaque appel —
+    // coûteux à faire 10x/seconde à chaque tick alors que les fautes ne
+    // changent que rarement. On ne l'appelle que si la valeur a bougé
+    // depuis le dernier rendu (c'est ça qui causait le ralentissement
+    // pendant tout le décompte de possession, pas juste en fin de compte).
+    if (s.fouls_home !== prevFoulsHome) { renderFouls('Home', s.fouls_home); prevFoulsHome = s.fouls_home; }
+    if (s.fouls_away !== prevFoulsAway) { renderFouls('Away', s.fouls_away); prevFoulsAway = s.fouls_away; }
+
+    if (s.team_home_name) document.getElementById('nameHome').textContent = s.team_home_name;
+    if (s.team_away_name) document.getElementById('nameAway').textContent = s.team_away_name;
+    if (s.team_home_color) document.getElementById('barHome').style.backgroundColor = s.team_home_color;
+    if (s.team_away_color) document.getElementById('barAway').style.backgroundColor = s.team_away_color;
+  }
+
+  function renderFouls(side, count) {
+    const rectsEl = document.getElementById('rects' + side);
+    const iconsEl = document.getElementById('icons' + side);
+    rectsEl.innerHTML = '';
+    const rectDefs = [{ cls:'r1', total:6, from:1 }, { cls:'r2', total:3, from:7 }, { cls:'r3', total:Math.max(1, count-9), from:10 }];
+    rectDefs.forEach(({ cls, total, from }, ri) => {
+      const rect = document.createElement('div');
+      const isRectActive = (ri === 0) || (count >= from);
+      rect.className = 'foul-rect ' + cls + (isRectActive ? ' active' : '');
+      for (let i = 0; i < total; i++) {
+        const cell = document.createElement('div'), isCommitted = count >= from + i;
+        cell.className = 'foul-cell' + (isCommitted ? ' committed' : '');
+        const dot = document.createElement('div');
+        dot.className = 'foul-dot ' + (isCommitted ? 'active' : 'off');
+        cell.appendChild(dot); rect.appendChild(cell);
+      }
+      rectsEl.appendChild(rect);
+    });
+    const zone = count >= 10 ? 3 : count >= 7 ? 2 : 1;
+    iconsEl.innerHTML = '';
+    if (count > 0) {
+      iconsEl.classList.add('visible');
+      iconsEl.innerHTML += (zone >= 2 ? '<img class="foul-icon" src="/lancer.png"><img class="foul-icon" src="/lancer.png">' : '<img class="foul-icon" src="/lancer.png">');
+      if (zone >= 3) iconsEl.innerHTML += '<img class="foul-icon" src="/ball.png">';
+    } else iconsEl.classList.remove('visible');
+  }
+
+  // Clavier
+  document.addEventListener('keydown', e => {
+    switch (e.key.toLowerCase()) {
+      case 'a': send('score_home_dec'); break; case 'z': send('score_home_inc'); break;
+      case 'o': send('score_away_dec'); break; case 'p': send('score_away_inc'); break;
+      case ' ': send('toggle_timer'); e.preventDefault(); break;
+      case 'r': send('reset_game'); break;
+      case 'w': send('fouls_home_dec'); break; case 'x': send('fouls_home_inc'); break;
+      case 'b': send('fouls_away_dec'); break; case 'n': send('fouls_away_inc'); break;
+      case 'enter': if (e.location===3) send('reset_poss'); break;
+    }
+  });
+
+  // Mode opérateur : la ligne de contrôles (reset, fin de match, pills...)
+  // ne s'affiche que si l'URL contient ?ctrl=1 — c'est config.html qui
+  // ouvre cette page ainsi pour la tactile. Sans ce paramètre (cas de
+  // l'écran HDMI public), la ligne reste masquée (cf. CSS) pour ne montrer
+  // aux spectateurs que le tableau lui-même.
+  if (new URLSearchParams(location.search).has('ctrl')) {
+    document.getElementById('statusRow').style.display = 'flex';
+  }
+
+  // Fin de match, deux options — cette page a été ouverte via window.open()
+  // depuis /config, qui reste dessous. Si la fermeture est refusée par le
+  // navigateur (onglet pas ouvert par script), on revient sur /config.
+
+  // Enregistre le score dans l'historique (côté serveur), remet le match à
+  // zéro, puis referme l'onglet.
+  async function endMatchSave() {
+    if (!confirm('Terminer le match et enregistrer le score ?')) return;
+    try {
+      await fetch('/api/end-match', { method: 'POST' });
+    } catch (e) { /* on ferme quand même : le match doit pouvoir se terminer même hors-ligne */ }
+    window.close();
+    setTimeout(() => { window.location.href = '/'; }, 300);
+  }
+
+  // Quitte sans rien enregistrer dans l'historique — mais remet quand même
+  // le tableau à zéro (via l'action reset_game existante), pour repartir
+  // propre sur le prochain match : il n'y a plus de bouton RESET séparé.
+  async function endMatchDiscard() {
+    if (!confirm('Quitter SANS enregistrer le score ? Le tableau sera quand même remis à zéro.')) return;
+    send('reset_game');
+    setTimeout(() => {
+      window.close();
+      setTimeout(() => { window.location.href = '/'; }, 300);
+    }, 150);
+  }
+
+  connect();
+</script>
+
+<!-- ══ MODALE SHUTDOWN ══════════════════════════════════════════ -->
+<style>
+  .shutdown-overlay {
+    display: none; position: fixed; inset: 0; z-index: 900;
+    align-items: center; justify-content: center;
+  }
+  .shutdown-overlay.open { display: flex; }
+  .shutdown-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(12px);
+  }
+  .shutdown-panel {
+    position: relative; background: #111; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 28px 32px; max-width: 340px; width: 90%;
+    text-align: center;
+    animation: sdPop .22s cubic-bezier(0.32,0.72,0,1);
+  }
+  @keyframes sdPop { from { transform: scale(0.88); opacity:0; } to { transform: scale(1); opacity:1; } }
+  .shutdown-icon { font-size: 36px; margin-bottom: 12px; }
+  .shutdown-title {
+    font-family: 'Inconsolata', monospace; font-weight: 800;
+    font-size: 16px; letter-spacing: 0.18em; color: #f5f5f5; margin-bottom: 8px;
+  }
+  .shutdown-sub {
+    font-family: 'Inconsolata', monospace; font-size: 11px;
+    letter-spacing: 0.12em; color: rgba(255,255,255,0.4); margin-bottom: 20px;
+  }
+  .shutdown-countdown {
+    font-family: 'Inconsolata', monospace; font-weight: 800;
+    font-size: 28px; color: #ef4444; margin-bottom: 20px; line-height: 1;
+  }
+  .shutdown-btns { display: flex; gap: 10px; }
+  .btn-cancel-sd {
+    flex: 1; padding: 11px; background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 5px;
+    color: #f5f5f5; font-family: 'Inconsolata', monospace;
+    font-weight: 700; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: background .15s;
+  }
+  .btn-cancel-sd:hover { background: rgba(255,255,255,0.14); }
+  .btn-confirm-sd {
+    flex: 1; padding: 11px; background: #ef4444;
+    border: none; border-radius: 5px;
+    color: #fff; font-family: 'Inconsolata', monospace;
+    font-weight: 800; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: opacity .15s;
+  }
+  .btn-confirm-sd:hover { opacity: 0.85; }
+</style>
+
+<div class="shutdown-overlay" id="shutdownOverlay">
+  <div class="shutdown-backdrop" onclick="cancelShutdown()"></div>
+  <div class="shutdown-panel">
+    <div class="shutdown-icon">⏻</div>
+    <div class="shutdown-title">ÉTEINDRE LE PI ?</div>
+    <div class="shutdown-sub">Extinction automatique dans</div>
+    <div class="shutdown-countdown" id="sdCountdown">10</div>
+    <div class="shutdown-btns">
+      <button class="btn-cancel-sd" onclick="cancelShutdown()">ANNULER</button>
+      <button class="btn-confirm-sd" onclick="confirmShutdown()">ÉTEINDRE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Modale shutdown ──────────────────────────────────────────────
+let _sdTimer = null;
+let _sdCount = 10;
+
+function openShutdownModal() {
+  _sdCount = 10;
+  document.getElementById('sdCountdown').textContent = _sdCount;
+  document.getElementById('shutdownOverlay').classList.add('open');
+  _sdTimer = setInterval(() => {
+    _sdCount--;
+    document.getElementById('sdCountdown').textContent = _sdCount;
+    if (_sdCount <= 0) {
+      clearInterval(_sdTimer);
+      confirmShutdown();
+    }
+  }, 1000);
+}
+
+function cancelShutdown() {
+  clearInterval(_sdTimer);
+  document.getElementById('shutdownOverlay').classList.remove('open');
+}
+
+function confirmShutdown() {
+  clearInterval(_sdTimer);
+  document.getElementById('shutdownOverlay').classList.remove('open');
+  fetch('/api/shutdown/confirm', { method: 'POST' }).catch(() => {});
+}
+// ────────────────────────────────────────────────────────────────
+</script>
+
+</body>
+</html>

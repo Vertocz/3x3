@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Possession</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inconsolata', monospace;
+      font-weight: 800;
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .poss-outer {
+      position: relative;
+      width: 100vw; height: 100vh;
+      overflow: visible;
+    }
+
+    /* Onde rouge centrée */
+    @keyframes wave {
+      0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(12); opacity: 0; }
+    }
+
+    /* Tremblement de terre COMPLET (10 étapes) */
+    @keyframes quake {
+      0%   { transform: translate(0, 0) rotate(0deg); }
+      10%  { transform: translate(-8px, 4px) rotate(-0.5deg); }
+      20%  { transform: translate(10px, -5px) rotate(0.5deg); }
+      30%  { transform: translate(-6px, 8px) rotate(-0.5deg); }
+      40%  { transform: translate(8px, -4px) rotate(0.5deg); }
+      50%  { transform: translate(-10px, 6px) rotate(-0.5deg); }
+      60%  { transform: translate(12px, -8px) rotate(0.5deg); }
+      70%  { transform: translate(-5px, 10px) rotate(-0.5deg); }
+      80%  { transform: translate(6px, -5px) rotate(0.5deg); }
+      90%  { transform: translate(-8px, 4px) rotate(-0.5deg); }
+      100% { transform: translate(0, 0) rotate(0deg); }
+    }
+
+    .poss-outer.quake { animation: quake 0.08s linear infinite; }
+
+    .poss-inner {
+      position: absolute; inset: 0;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .poss-inner::before, .poss-inner::after {
+      content: "";
+      position: absolute;
+      top: 48%; left: 50%;
+      width: 25vmin; height: 25vmin;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(239,68,68,0.95) 0%, rgba(239,68,68,0.6) 30%, rgba(239,68,68,0) 70%);
+      opacity: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .poss-outer.urgent .poss-inner::before, .poss-outer.quake .poss-inner::before { animation: wave 0.85s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+    .poss-outer.urgent .poss-inner::after, .poss-outer.quake .poss-inner::after { animation: wave 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.425s infinite; }
+
+    .poss-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 100%;
+      transition: height 0.1s linear, background-color 0.4s ease;
+      background-color: #22c55e;
+    }
+
+    .poss-num {
+      position: absolute; inset: 0;
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      padding-top: 15vh;
+      line-height: 1;
+    }
+
+    .text-dark { color: #1a1a1a; z-index: 2; }
+    .text-light { color: #ffffff; z-index: 3; transition: clip-path 0.1s linear; }
+    .poss-sec { font-size: clamp(120px, 35vw, 55vh); font-variant-numeric: tabular-nums; line-height: 1; }
+    .poss-dec { font-size: clamp(48px, 14vw, 22vh); font-variant-numeric: tabular-nums; line-height: 1; padding-bottom: 0.06em; }
+
+    .ws-dot { position: absolute; bottom: 16px; right: 16px; width: 10px; height: 10px; border-radius: 50%; background: rgba(128,128,128,0.3); z-index: 10; }
+    .ws-dot.on { background: #22c55e; }
+  </style>
+</head>
+<body>
+
+<div class="poss-outer" id="possOuter">
+  <div class="poss-inner">
+    <div class="poss-fill" id="possFill"></div>
+    <div class="poss-num text-dark">
+      <span class="poss-sec" id="possSecDark">12</span><span class="poss-dec" id="possDecDark" style="display:none"></span>
+    </div>
+    <div class="poss-num text-light" id="possNumLight">
+      <span class="poss-sec" id="possSecLight">12</span><span class="poss-dec" id="possDecLight" style="display:none"></span>
+    </div>
+  </div>
+</div>
+
+<div class="ws-dot" id="wsDot"></div>
+
+<script>
+  // ── WebSocket ────────────────────────────────────────────────────────────
+  let ws = null;
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen    = () => document.getElementById('wsDot').className = 'ws-dot on';
+    ws.onerror = () => ws.close();
+    ws.onclose   = () => { document.getElementById('wsDot').className = 'ws-dot'; setTimeout(connect, 2000); };
+    ws.onmessage = e => render(JSON.parse(e.data));
+  }
+
+  function possColor(t) {
+    if (t >= 9) return '#22c55e';
+    if (t >= 6) return '#eab308';
+    if (t >= 3) return '#f97316';
+    return '#ef4444';
+  }
+
+  function render(s) {
+    const pt = s.poss_time, possMax = s.poss_max || 12, fillPct = Math.max(0, (pt / possMax) * 100);
+    document.getElementById('possSecDark').textContent  = Math.floor(pt);
+    document.getElementById('possSecLight').textContent = Math.floor(pt);
+    const dd = document.getElementById('possDecDark'), dl = document.getElementById('possDecLight');
+    if (s.show_dec_possession && pt < 10) {
+      const v = '.' + Math.floor((pt % 1) * 10);
+      dd.textContent = dl.textContent = v;
+      dd.style.display = dl.style.display = '';
+    } else {
+      dd.style.display = dl.style.display = 'none';
+    }
+    document.getElementById('possFill').style.height          = fillPct.toFixed(2) + '%';
+    document.getElementById('possFill').style.backgroundColor = possColor(pt);
+    document.getElementById('possNumLight').style.clipPath    = `inset(${(100 - fillPct).toFixed(2)}% 0 0 0)`;
+    const outer = document.getElementById('possOuter');
+    outer.classList.remove('urgent', 'quake');
+    if (pt <= 2 && pt > 0)      outer.classList.add('quake');
+    else if (pt < 4 && pt > 0)  outer.classList.add('urgent');
+  }
+
+  connect();
+</script>
+</body>
+</html>
