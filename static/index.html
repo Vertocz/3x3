@@ -154,7 +154,7 @@
     }
     .btn-end-match { background: #22c55e; color: #06210f; }
     .btn-ot { background: #f5a623; color: #2a1a00; }
-    .btn-discard-match { background: rgba(128,128,128,0.18); color: rgba(255,255,255,0.55); }
+    .btn-discard-match { background: rgba(53, 53, 53, 0.884); color: rgb(255, 255, 255); }
     .btn-end-match:active, .btn-discard-match:active, .btn-ot:active { opacity: 0.8; }
   </style>
 </head>
@@ -210,7 +210,6 @@
 
   <div class="status-row" id="statusRow">
     <div class="right-controls">
-      <a href="possession" target="_blank" class="possession">POSSESSION</a>
       <button class="btn-ot" id="btnOvertime" style="display:none" onclick="startOvertime()">⏱ PROLONGATION</button>
       <button class="btn-discard-match" id="btnSkipBreak" style="display:none" onclick="send('skip_break')">⏭ PASSER LA PAUSE</button>
       <button class="btn-discard-match" id="btnCancelOt" style="display:none" onclick="cancelOvertime()">↩ ANNULER LA PROLONGATION</button>
