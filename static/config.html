@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Config</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -547,17 +547,38 @@ async function deleteTeam(id) {
   renderTeamsManageList();
 }
 
+// Petit utilitaire : crée un élément sans jamais interpréter de HTML. Les noms
+// d'équipe viennent du serveur (et donc potentiellement de n'importe quel
+// appareil du Wi-Fi) : textContent + addEventListener, jamais innerHTML/onclick
+// avec interpolation (un nom contenant ' ou " cassait le bouton CHOISIR).
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function safeColor(c) { return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#888888'; }
+
+function teamDot(color) {
+  const d = el('div', 'saved-dot');
+  d.style.background = safeColor(color);
+  return d;
+}
+
 function renderSavedList() {
-  const el = document.getElementById('savedList');
-  const teams = _teamsCache;
-  el.innerHTML = '';
-  if (!teams.length) { el.innerHTML = '<div class="saved-empty">Aucune équipe enregistrée</div>'; return; }
-  teams.forEach(({ id, name, color }) => {
-    const safeName = name.replace(/'/g,"\\'");
-    const row  = document.createElement('div');
-    row.className = 'saved-row';
-    row.innerHTML = `<div class="saved-dot" style="background:${color}"></div><div class="saved-name" onclick="loadTeam('${safeName}','${color}')">${name}</div><button class="btn-load" onclick="loadTeam('${safeName}','${color}')">CHOISIR</button><button class="btn-del" onclick="deleteTeam('${id}')">🗑</button>`;
-    el.appendChild(row);
+  const list = document.getElementById('savedList');
+  list.replaceChildren();
+  if (!_teamsCache.length) { list.appendChild(el('div', 'saved-empty', 'Aucune équipe enregistrée')); return; }
+  _teamsCache.forEach(({ id, name, color }) => {
+    const row = el('div', 'saved-row');
+    const nameEl = el('div', 'saved-name', name);
+    nameEl.addEventListener('click', () => loadTeam(name, color));
+    const pick = el('button', 'btn-load', 'CHOISIR');
+    pick.addEventListener('click', () => loadTeam(name, color));
+    const del = el('button', 'btn-del', '🗑');
+    del.addEventListener('click', () => deleteTeam(id));
+    row.append(teamDot(color), nameEl, pick, del);
+    list.appendChild(row);
   });
 }
 
@@ -568,17 +589,19 @@ async function loadTeamsManage() {
 }
 
 function renderTeamsManageList() {
-  const el = document.getElementById('teamsManageList');
-  if (!el) return;
-  const teams = _teamsCache;
-  el.innerHTML = '';
-  if (!teams.length) { el.innerHTML = '<div class="saved-empty">Aucune équipe enregistrée</div>'; return; }
-  teams.forEach(({ id, name, color }) => {
-    const safeName = name.replace(/'/g,"\\'");
-    const row = document.createElement('div');
-    row.className = 'saved-row';
-    row.innerHTML = `<div class="saved-dot" style="background:${color}"></div><div class="saved-name" style="cursor:default">${name}</div><button class="btn-del" onclick="deleteTeamManage('${id}','${safeName}')" title="Supprimer">🗑</button>`;
-    el.appendChild(row);
+  const list = document.getElementById('teamsManageList');
+  if (!list) return;
+  list.replaceChildren();
+  if (!_teamsCache.length) { list.appendChild(el('div', 'saved-empty', 'Aucune équipe enregistrée')); return; }
+  _teamsCache.forEach(({ id, name, color }) => {
+    const row = el('div', 'saved-row');
+    const nameEl = el('div', 'saved-name', name);
+    nameEl.style.cursor = 'default';
+    const del = el('button', 'btn-del', '🗑');
+    del.title = 'Supprimer';
+    del.addEventListener('click', () => deleteTeamManage(id, name));
+    row.append(teamDot(color), nameEl, del);
+    list.appendChild(row);
   });
 }
 
@@ -595,23 +618,29 @@ async function loadMatches() {
     if (!r.ok) throw new Error('fetch failed');
     renderMatches(await r.json());
   } catch (e) {
-    el.innerHTML = '<div class="saved-empty">Impossible de charger l\'historique</div>';
+    el.replaceChildren(Object.assign(document.createElement('div'), { className: 'saved-empty', textContent: "Impossible de charger l'historique" }));
   }
 }
 
 function renderMatches(list) {
-  const el = document.getElementById('matchesList');
-  el.innerHTML = '';
-  if (!list.length) { el.innerHTML = '<div class="saved-empty">Aucun match enregistré</div>'; return; }
+  const box = document.getElementById('matchesList');
+  box.replaceChildren();
+  if (!list.length) { box.appendChild(el('div', 'saved-empty', 'Aucun match enregistré')); return; }
   // Déjà trié du plus récent au plus ancien par le serveur.
   list.forEach(m => {
     const d = new Date(m.date);
     const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
       + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    const row = document.createElement('div');
-    row.className = 'match-row';
-    row.innerHTML = `<span class="match-date">${dateStr}</span><span class="match-teams">${m.home_team} <span style="opacity:.4">vs</span> ${m.away_team}</span><span class="match-score">${m.score_home} – ${m.score_away}</span><button class="btn-del" onclick="deleteMatch('${m.id}')" title="Supprimer">🗑</button>`;
-    el.appendChild(row);
+    const row = el('div', 'match-row');
+    const teams = el('span', 'match-teams');
+    const vs = el('span', '', 'vs');
+    vs.style.opacity = '.4';
+    teams.append(document.createTextNode(m.home_team + ' '), vs, document.createTextNode(' ' + m.away_team));
+    const del = el('button', 'btn-del', '🗑');
+    del.title = 'Supprimer';
+    del.addEventListener('click', () => deleteMatch(m.id));
+    row.append(el('span', 'match-date', dateStr), teams, el('span', 'match-score', m.score_home + ' – ' + m.score_away + (m.overtime ? ' (prol.)' : '')), del);
+    box.appendChild(row);
   });
 }
 

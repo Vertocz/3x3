@@ -30,7 +30,6 @@ go version
 # ── 3. Compiler l'application ──
 echo "▶ Compilation du scoreboard..."
 cd ~/scoreboard
-go mod tidy
 go build -o scoreboard .
 echo "✅ Compilation OK"
 
@@ -45,69 +44,72 @@ if ! grep -q "dtoverlay=vc4-kms-dsi-7inch" $BOOT_CONFIG; then
 fi
 
 # ── 5. Hotspot WiFi ──
+# Nom et mot de passe du hotspot : modifiables sans toucher au script
+#   WIFI_PASS="monmotdepasse" bash setup_pi.sh
+WIFI_SSID="${WIFI_SSID:-Scoreboard3x3}"
+WIFI_PASS="${WIFI_PASS:-basketball3x3}"
 echo "▶ Configuration du hotspot WiFi..."
-sudo apt install -y hostapd dnsmasq
-sudo systemctl stop hostapd dnsmasq 2>/dev/null || true
 
-# IP fixe sur wlan0
-if ! grep -q "interface wlan0" /etc/dhcpcd.conf 2>/dev/null; then
-  cat << EOF | sudo tee -a /etc/dhcpcd.conf
+if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+  # Raspberry Pi OS Bookworm (obligatoire sur Pi 5) : NetworkManager gère le
+  # Wi-Fi. dhcpcd/hostapd n'y sont pas utilisés.
+  echo "  (NetworkManager détecté)"
+  sudo nmcli connection delete "$WIFI_SSID" >/dev/null 2>&1 || true
+  sudo nmcli connection add type wifi ifname wlan0 con-name "$WIFI_SSID" \
+    autoconnect yes ssid "$WIFI_SSID" \
+    802-11-wireless.mode ap 802-11-wireless.band bg \
+    ipv4.method shared ipv4.addresses 192.168.4.1/24 \
+    wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$WIFI_PASS"
+  sudo nmcli connection up "$WIFI_SSID" || echo "  ⚠️  hotspot non démarré maintenant — il le sera au prochain redémarrage"
+else
+  # Anciens Raspberry Pi OS : dhcpcd + hostapd + dnsmasq
+  sudo apt install -y hostapd dnsmasq
+  sudo systemctl stop hostapd dnsmasq 2>/dev/null || true
+
+  # IP fixe sur wlan0
+  if ! grep -q "interface wlan0" /etc/dhcpcd.conf 2>/dev/null; then
+    cat << EOF | sudo tee -a /etc/dhcpcd.conf
 
 interface wlan0
 static ip_address=192.168.4.1/24
 nohook wpa_supplicant
 EOF
-fi
+  fi
 
-# DHCP
-sudo mv /etc/dnsmasq.conf /etc/dnsmasq.conf.backup 2>/dev/null || true
-cat << EOF | sudo tee /etc/dnsmasq.conf
+  # DHCP
+  sudo mv /etc/dnsmasq.conf /etc/dnsmasq.conf.backup 2>/dev/null || true
+  cat << EOF | sudo tee /etc/dnsmasq.conf
 interface=wlan0
 dhcp-range=192.168.4.10,192.168.4.50,255.255.255.0,24h
 address=/scoreboard.local/192.168.4.1
 EOF
 
-# Hotspot
-cat << EOF | sudo tee /etc/hostapd/hostapd.conf
+  # Hotspot
+  cat << EOF | sudo tee /etc/hostapd/hostapd.conf
 interface=wlan0
-ssid=Scoreboard3x3
+ssid=${WIFI_SSID}
 hw_mode=g
 channel=7
 wpa=2
-wpa_passphrase=basketball3x3
+wpa_passphrase=${WIFI_PASS}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
 
-sudo sed -i 's|#DAEMON_CONF=""|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
-sudo systemctl unmask hostapd
-sudo systemctl enable hostapd dnsmasq
+  sudo sed -i 's|#DAEMON_CONF=""|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
+  sudo systemctl unmask hostapd
+  sudo systemctl enable hostapd dnsmasq
+fi
 
 # ── 6. Service systemd — application Go ──
 echo "▶ Service systemd scoreboard..."
-UID_NUM=$(id -u)
-cat << EOF | sudo tee /etc/systemd/system/scoreboard.service
-[Unit]
-Description=Tableau de marque 3x3
-After=network.target
-
-[Service]
-Type=simple
-User=$(whoami)
-WorkingDirectory=/home/$(whoami)/scoreboard
-ExecStart=/home/$(whoami)/scoreboard/scoreboard
-Restart=always
-RestartSec=3
-Environment=HOME=/home/$(whoami)
-Environment=XDG_RUNTIME_DIR=/run/user/${UID_NUM}
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# Le modèle versionné (scoreboard.service) est adapté à l'utilisateur courant.
+sed -e "s|__USER__|$(whoami)|g" -e "s|__HOME__|$HOME|g" -e "s|__UID__|$(id -u)|g" \
+  ~/scoreboard/scoreboard.service | sudo tee /etc/systemd/system/scoreboard.service > /dev/null
 
 sudo systemctl daemon-reload
 sudo systemctl enable scoreboard
-sudo systemctl start scoreboard
+sudo systemctl restart scoreboard
 
 # ── 7. Sudoers — extinction sans mot de passe ──
 # Le serveur Go exécute "sudo shutdown -h now" (bouton power physique et
@@ -151,7 +153,7 @@ echo "╔═══════════════════════�
 echo "║         INSTALLATION TERMINÉE            ║"
 echo "║                                          ║"
 echo "║  WiFi : Scoreboard3x3                    ║"
-echo "║  MDP  : basketball3x3                    ║"
+echo "║  MDP  : ${WIFI_PASS}"
 echo "║  URL  : http://192.168.4.1:8000          ║"
 echo "║                                          ║"
 echo "║  Redémarrage nécessaire pour appliquer   ║"

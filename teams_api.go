@@ -1,108 +1,95 @@
 package main
 
 import (
-	"encoding/json"
+	"log"
 	"math/rand"
 	"net/http"
-	"sort"
 	"strings"
 )
 
 // handleTeams gère toutes les requêtes sur /api/teams
 func handleTeams(w http.ResponseWriter, r *http.Request, store *Store) {
-	w.Header().Set("Content-Type", "application/json")
-
 	switch r.Method {
 
 	// GET /api/teams → liste toutes les équipes
 	case http.MethodGet:
-		json.NewEncoder(w).Encode(store.Teams)
+		writeJSON(w, 200, store.ListTeams())
 
 	// POST /api/teams → créer ou mettre à jour une équipe
 	case http.MethodPost:
 		var t Team
-		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-			http.Error(w, "bad request", 400)
+		if err := decodeJSON(w, r, &t); err != nil {
+			writeErr(w, 400, "bad request")
 			return
 		}
+		t.Name = cleanName(strings.ToUpper(t.Name))
 		if t.Name == "" {
-			http.Error(w, "nom requis", 400)
+			writeErr(w, 400, "nom requis")
 			return
 		}
-		if t.ID == "" {
-			t.ID = newID()
-		}
-		t.Name = strings.ToUpper(strings.TrimSpace(t.Name))
-		store.UpsertTeam(t)
-		if err := store.Save(); err != nil {
-			w.WriteHeader(500)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if !isHexColor(t.Color) {
+			writeErr(w, 400, "couleur invalide (attendu #rrggbb)")
 			return
 		}
-		json.NewEncoder(w).Encode(t)
+		saved, err := store.UpsertTeam(t)
+		if err != nil {
+			log.Printf("⚠️  Sauvegarde équipe: %v", err)
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, saved)
 
 	// DELETE /api/teams?id=xxx → supprimer une équipe
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			http.Error(w, "id requis", 400)
+			writeErr(w, 400, "id requis")
 			return
 		}
-		store.DeleteTeam(id)
-		if err := store.Save(); err != nil {
-			w.WriteHeader(500)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := store.DeleteTeam(id); err != nil {
+			writeErr(w, 500, err.Error())
 			return
 		}
-		w.Write([]byte(`{"ok":true}`))
+		writeOK(w)
 
 	default:
-		http.Error(w, "method not allowed", 405)
+		writeErr(w, 405, "method not allowed")
 	}
 }
 
 // handleMatches gère les requêtes sur /api/matches (historique des scores)
 func handleMatches(w http.ResponseWriter, r *http.Request, store *Store) {
-	w.Header().Set("Content-Type", "application/json")
-
 	switch r.Method {
 
 	// GET /api/matches → liste tous les matchs enregistrés, du plus récent
-	// au plus ancien (le tri chronologique se fait ici, pas côté front).
+	// au plus ancien (le tri chronologique se fait côté serveur).
 	case http.MethodGet:
-		sorted := make([]MatchRecord, len(store.Matches))
-		copy(sorted, store.Matches)
-		sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date.After(sorted[j].Date) })
-		json.NewEncoder(w).Encode(sorted)
+		writeJSON(w, 200, store.ListMatches())
 
 	// DELETE /api/matches?id=xxx → supprimer un match de l'historique
 	// DELETE /api/matches?all=1  → vider tout l'historique
 	case http.MethodDelete:
 		if r.URL.Query().Get("all") == "1" {
-			store.Matches = []MatchRecord{}
-			if err := store.Save(); err != nil {
-				w.WriteHeader(500)
-				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			if err := store.ClearMatches(); err != nil {
+				writeErr(w, 500, err.Error())
 				return
 			}
-			w.Write([]byte(`{"ok":true}`))
+			writeOK(w)
 			return
 		}
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			http.Error(w, "id requis", 400)
+			writeErr(w, 400, "id requis")
 			return
 		}
-		store.DeleteMatch(id)
-		if err := store.Save(); err != nil {
-			w.WriteHeader(500)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := store.DeleteMatch(id); err != nil {
+			writeErr(w, 500, err.Error())
 			return
 		}
-		w.Write([]byte(`{"ok":true}`))
+		writeOK(w)
 
 	default:
-		http.Error(w, "method not allowed", 405)
+		writeErr(w, 405, "method not allowed")
 	}
 }
 

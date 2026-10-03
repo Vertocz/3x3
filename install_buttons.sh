@@ -10,10 +10,13 @@ echo "▶ Installation de gpiozero, lgpio et requests..."
 sudo apt install -y python3-gpiozero python3-lgpio python3-requests
 
 echo "▶ Installation du service boutons..."
-sudo cp /home/pi/scoreboard/buttons.service /etc/systemd/system/
+# Le fichier du dépôt est un modèle (__USER__ / __HOME__) : on l'adapte à
+# l'utilisateur courant plutôt que de supposer "pi".
+sed -e "s|__USER__|$(whoami)|g" -e "s|__HOME__|$HOME|g" \
+  "$HOME/scoreboard/buttons.service" | sudo tee /etc/systemd/system/buttons.service > /dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable buttons.service
-sudo systemctl start buttons.service
+sudo systemctl restart buttons.service
 
 echo ""
 echo "✅ Boutons actifs !"

@@ -1,9 +1,10 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -37,15 +39,29 @@ var logoPNG []byte
 //go:embed static/horn.mp3
 var hornMP3 []byte
 
+// Polices embarquées (Inconsolata, licence OFL) : le Pi sert son propre
+// hotspot Wi-Fi, donc sans accès Internet. Avec Google Fonts, la police ne
+// se chargeait jamais et la feuille de style externe pouvait retarder
+// l'affichage de plusieurs secondes au démarrage.
+//
+//go:embed static/fonts
+var fontsFS embed.FS
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+const (
+	wsWriteWait = 5 * time.Second
+	wsPongWait  = 45 * time.Second
+	wsPingEvery = 20 * time.Second
+)
+
 // chromiumLaunches suit, par numéro de HDMI (1 ou 2), le process Chromium
 // lancé par /api/launch. Objectif : éviter d'empiler plusieurs fenêtres sur
-// le même écran (double clic sur "lancer le tableau", ou futur
-// auto-lancement au branchement à chaud) — chaque instance Chromium
-// supplémentaire coûte cher en RAM sur un Raspberry Pi.
+// le même écran (double clic sur "lancer le tableau", ou auto-lancement au
+// branchement à chaud) — chaque instance Chromium supplémentaire coûte cher
+// en RAM sur un Raspberry Pi.
 type launchState struct {
 	mu    sync.Mutex
 	procs map[int]*os.Process
@@ -86,54 +102,67 @@ func waylandEnv() []string {
 }
 
 func handleSetDisplay(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	var cfg struct {
 		HDMI1 string `json:"hdmi1"`
 		HDMI2 string `json:"hdmi2"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		http.Error(w, "bad request", 400)
+	if err := decodeJSON(w, r, &cfg); err != nil {
+		writeErr(w, 400, "bad request")
 		return
 	}
-	applyRes := func(output, res string) {
-		parts := strings.Split(res, "@")
-		if len(parts) != 2 {
-			return
+
+	apply := func(output, res string) error {
+		if res == "" {
+			return nil
 		}
-		cmd := exec.Command("wlr-randr", "--output", output, "--mode", parts[0], "--refresh", parts[1])
-		cmd.Env = append(os.Environ(), waylandEnv()...)
-		cmd.Run()
+		if !resolutionRe.MatchString(res) {
+			return fmt.Errorf("résolution invalide pour %s: %q", output, res)
+		}
+		parts := strings.Split(res, "@")
+		return runWayland(5*time.Second, "wlr-randr", "--output", output, "--mode", parts[0], "--refresh", parts[1])
 	}
-	if cfg.HDMI1 != "" {
-		applyRes("HDMI-A-1", cfg.HDMI1)
+
+	var errs []string
+	if err := apply("HDMI-A-1", cfg.HDMI1); err != nil {
+		errs = append(errs, err.Error())
 	}
-	if cfg.HDMI2 != "" {
-		applyRes("HDMI-A-2", cfg.HDMI2)
+	if err := apply("HDMI-A-2", cfg.HDMI2); err != nil {
+		errs = append(errs, err.Error())
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true}`))
+	if len(errs) > 0 {
+		writeErr(w, 500, strings.Join(errs, " ; "))
+		return
+	}
+	writeOK(w)
+}
+
+// shutdownNow sauvegarde la configuration puis éteint le Pi.
+func shutdownNow(sm *StateManager) {
+	sm.saveState()
+	if out, err := exec.Command("sudo", "shutdown", "-h", "now").CombinedOutput(); err != nil {
+		log.Printf("❌ shutdown impossible: %v (%s)", err, strings.TrimSpace(string(out)))
+	}
 }
 
 // handleShutdown — appelé par buttons.py (bouton power physique).
 // force=false : broadcast WS → modale de confirmation sur toutes les pages.
-// force=true  : shutdown immédiat (appui long >= 3s).
+// force=true : shutdown immédiat (appui long >= 3s).
 func handleShutdown(w http.ResponseWriter, r *http.Request, sm *StateManager) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	var body struct {
 		Force bool `json:"force"`
 	}
-	json.NewDecoder(r.Body).Decode(&body)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true}`))
+	decodeJSON(w, r, &body) // corps vide = force=false
+	writeOK(w)
+
 	if body.Force {
 		log.Println("Shutdown immédiat (appui long)")
-		go exec.Command("sudo", "shutdown", "-h", "now").Run()
+		go shutdownNow(sm)
 		return
 	}
 	msg, _ := json.Marshal(map[string]string{"type": "shutdown_request"})
@@ -142,15 +171,13 @@ func handleShutdown(w http.ResponseWriter, r *http.Request, sm *StateManager) {
 }
 
 // handleShutdownConfirm — appelé par la page web après confirmation utilisateur.
-func handleShutdownConfirm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+func handleShutdownConfirm(w http.ResponseWriter, r *http.Request, sm *StateManager) {
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	log.Println("Shutdown confirmé (interface web)")
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true}`))
-	go exec.Command("sudo", "shutdown", "-h", "now").Run()
+	writeOK(w)
+	go shutdownNow(sm)
 }
 
 // handleLaunchHDMI — POST /api/launch {"hdmi": 1|2}
@@ -347,55 +374,63 @@ func StartWebServer(port int, sm *StateManager, store *Store) error {
 	mux.HandleFunc("/api/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		handleShutdown(w, r, sm)
 	})
-	mux.HandleFunc("/api/shutdown/confirm", handleShutdownConfirm)
+	mux.HandleFunc("/api/shutdown/confirm", func(w http.ResponseWriter, r *http.Request) {
+		handleShutdownConfirm(w, r, sm)
+	})
 	mux.HandleFunc("/api/action", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", 405)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		var a ClientAction
-		if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-			http.Error(w, "bad request", 400)
+		if err := decodeJSON(w, r, &a); err != nil {
+			writeErr(w, 400, "bad request")
 			return
 		}
-		msg, _ := json.Marshal(a)
-		handleClientAction(msg, sm)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"ok":true}`))
+		handleAction(a, sm)
+		writeOK(w)
 	})
-	mux.HandleFunc("/lancer.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(lancerPNG)
-	})
-	mux.HandleFunc("/ball.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(ballPNG)
-	})
-	mux.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(logoPNG)
-	})
-	mux.HandleFunc("/horn.mp3", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "audio/mpeg")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		w.Write(hornMP3)
-	})
-	mux.HandleFunc("/scoreboard", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(indexHTML)
-	})
-	mux.HandleFunc("/possession", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(possessionHTML)
+
+	// Fichiers statiques embarqués (images, son, polices : cache long).
+	const assetCache = "public, max-age=86400"
+	mux.HandleFunc("/lancer.png", serveBytes("image/png", assetCache, lancerPNG))
+	mux.HandleFunc("/ball.png", serveBytes("image/png", assetCache, ballPNG))
+	mux.HandleFunc("/logo.png", serveBytes("image/png", assetCache, logoPNG))
+	mux.HandleFunc("/horn.mp3", serveBytes("audio/mpeg", assetCache, hornMP3))
+	if sub, err := fs.Sub(fontsFS, "static/fonts"); err == nil {
+		fonts := http.StripPrefix("/fonts/", http.FileServer(http.FS(sub)))
+		mux.Handle("/fonts/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "public, max-age=604800")
+			fonts.ServeHTTP(w, r)
+		}))
+	}
+
+	// Pages : pas de cache, pour qu'une mise à jour du binaire soit visible
+	// au prochain rechargement.
+	const pageCache = "no-cache"
+	const htmlType = "text/html; charset=utf-8"
+	mux.HandleFunc("/scoreboard", serveBytes(htmlType, pageCache, indexHTML))
+	mux.HandleFunc("/possession", serveBytes(htmlType, pageCache, possessionHTML))
+	page := serveBytes(htmlType, pageCache, configHTML)
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(configHTML)
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		page(w, r)
 	})
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("Écoute sur %s", addr)
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request, sm *StateManager) {
@@ -405,13 +440,32 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, sm *StateManager) {
 	}
 	defer conn.Close()
 
+	// Détection des connexions mortes (écran HDMI débranché, Wi-Fi coupé,
+	// onglet gelé) : sans ping/pong, la goroutine et la file du client
+	// restaient en mémoire indéfiniment.
+	conn.SetReadLimit(4096)
+	conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
+
+	// S'abonner AVANT de lire l'état initial : aucun changement ne peut
+	// se glisser entre les deux.
 	ch := sm.Subscribe()
 	defer sm.Unsubscribe(ch)
 
+	write := func(msgType int, data []byte) error {
+		conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+		return conn.WriteMessage(msgType, data)
+	}
+
 	initialState := sm.Get()
-	fmt.Printf("🔌 Nouvelle connexion WS — home=%q away=%q\n", initialState.TeamHomeName, initialState.TeamAwayName)
+	log.Printf("🔌 WS connecté (%s) — home=%q away=%q", r.RemoteAddr, initialState.TeamHomeName, initialState.TeamAwayName)
 	initial, _ := json.Marshal(initialState)
-	conn.WriteMessage(websocket.TextMessage, initial)
+	if err := write(websocket.TextMessage, initial); err != nil {
+		return
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -421,9 +475,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, sm *StateManager) {
 			if err != nil {
 				return
 			}
+			conn.SetReadDeadline(time.Now().Add(wsPongWait))
 			handleClientAction(msg, sm)
 		}
 	}()
+
+	ping := time.NewTicker(wsPingEvery)
+	defer ping.Stop()
 
 	for {
 		select {
@@ -433,7 +491,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, sm *StateManager) {
 			if !ok {
 				return
 			}
-			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := write(websocket.TextMessage, data); err != nil {
+				return
+			}
+		case <-ping.C:
+			if err := write(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		}
@@ -450,11 +512,15 @@ func handleClientAction(msg []byte, sm *StateManager) {
 	if err := json.Unmarshal(msg, &a); err != nil {
 		return
 	}
+	handleAction(a, sm)
+}
 
+// handleAction applique une action (bouton physique, page web ou clavier).
+func handleAction(a ClientAction, sm *StateManager) {
 	if a.Action == "manual_horn" {
 		// Pas une mutation d'état à retenir/rediffuser en continu : un
 		// simple événement ponctuel, sur le même principe que
-		// shutdown_request plus haut.
+		// shutdown_request.
 		hornMsg, _ := json.Marshal(map[string]string{"type": "horn"})
 		sm.BroadcastRaw(hornMsg)
 		return
@@ -475,29 +541,50 @@ func handleClientAction(msg []byte, sm *StateManager) {
 				s.ScoreAway--
 			}
 		case "toggle_timer":
+			if s.Overtime {
+				// En prolongation il n'y a plus de chrono de jeu : le bouton
+				// principal lance/arrête le chrono de possession. Rien pendant
+				// la pause d'une minute.
+				if s.BreakTime > 0 {
+					return
+				}
+				if !s.PossRunning && s.PossTime <= 0 {
+					return
+				}
+				s.PossRunning = !s.PossRunning
+				return
+			}
+			if !s.TimeRunning && s.GameTime <= 0 {
+				return // rien à faire démarrer : le temps est écoulé
+			}
 			s.TimeRunning = !s.TimeRunning
 			s.PossRunning = s.TimeRunning
 		case "reset_game":
-			s.GameTime = float64(s.MatchDuration)
-			s.ScoreHome = 0
-			s.ScoreAway = 0
-			s.FoulsHome = 0
-			s.FoulsAway = 0
-			s.Period = 1
-			s.TimeRunning = false
-			s.PossRunning = false
-			s.PossTime = s.PossMax
+			s.resetMatch()
 		case "game_time_adj":
+			if s.Overtime {
+				return // pas de chrono de jeu en prolongation
+			}
 			s.GameTime = clamp(s.GameTime+float64(a.Value), 0, float64(s.MatchDuration))
 		case "toggle_poss":
+			if s.Overtime && s.BreakTime > 0 {
+				return
+			}
+			if !s.PossRunning && s.PossTime <= 0 {
+				return
+			}
 			s.PossRunning = !s.PossRunning
 		case "reset_poss":
 			s.PossTime = s.PossMax
-			s.PossRunning = s.TimeRunning
+			if !s.Overtime {
+				s.PossRunning = s.TimeRunning
+			}
+			// En prolongation : le chrono de possession garde son état (en
+			// marche → repart à 12 s, à l'arrêt → reste à l'arrêt).
 		case "poss_time_adj":
 			s.PossTime = clamp(s.PossTime+float64(a.Value), 0, s.PossMax)
 		case "fouls_home_inc":
-			if s.FoulsHome < 10 {
+			if s.FoulsHome < maxFouls {
 				s.FoulsHome++
 			}
 		case "fouls_home_dec":
@@ -505,13 +592,37 @@ func handleClientAction(msg []byte, sm *StateManager) {
 				s.FoulsHome--
 			}
 		case "fouls_away_inc":
-			if s.FoulsAway < 10 {
+			if s.FoulsAway < maxFouls {
 				s.FoulsAway++
 			}
 		case "fouls_away_dec":
 			if s.FoulsAway > 0 {
 				s.FoulsAway--
 			}
+
+		// ── Prolongation ─────────────────────────────────────────────
+		case "start_overtime":
+			// Uniquement si le temps est écoulé sur une égalité : le bouton
+			// n'existe d'ailleurs à l'écran que dans ce cas.
+			if s.Overtime || s.TimeRunning || s.GameTime > 0 || s.ScoreHome != s.ScoreAway {
+				return
+			}
+			s.Overtime = true
+			s.OvertimeBase = s.ScoreHome
+			s.BreakTime = overtimeBreakSecs
+			s.PossTime = s.PossMax
+			s.PossRunning = false
+		case "skip_break":
+			if s.Overtime {
+				s.BreakTime = 0
+			}
+		case "cancel_overtime":
+			// Annulation en cas de fausse manœuvre : retour à l'égalité à 0:00.
+			s.Overtime = false
+			s.OvertimeBase = 0
+			s.BreakTime = 0
+			s.PossRunning = false
 		}
 	})
+	sm.requestSave() // mémorise le match en cours (reprise après coupure)
 }

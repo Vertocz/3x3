@@ -4,8 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scoreboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/fonts/fonts.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -103,7 +102,12 @@
     .foul-icons-row.visible { opacity: 1; }
     .foul-icon { height: 100%; width: auto; object-fit: contain; mix-blend-mode: difference;}
 
-    .chrono-header { display: flex; align-items: flex-start; justify-content: center; padding: 0 1vw; }
+    .chrono-header { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 0 1vw; }
+    /* Libellé discret sous le chrono : ÉGALITÉ / PAUSE / PROLONGATION.
+       Invisible (opacity 0) hors de ces cas, il ne décale rien. */
+    .ot-label { font-size: clamp(12px, 2vh, 3.2vh); font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase;
+                color: #8a8a8a; margin-top: 0.8vh; min-height: 2.4vh; white-space: nowrap; opacity: 0; transition: opacity 0.4s; user-select: none; }
+    .ot-label.on { opacity: 1; }
     .game-time { font-size: clamp(50px, 8.2vw, 14.5vh); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; white-space: nowrap; line-height: 1; }
 
     /* ── Scores + possession ── */
@@ -144,13 +148,14 @@
     .status-row { grid-column: 1 / -1; display: none; justify-content: flex-end; align-items: center; padding-top: 1vh; }
     .right-controls { display: flex; gap: 8px; align-items: center; }
     .possession { background: rgba(128,128,128,0.15); color: rgba(128,128,128,0.45); text-decoration: none; font-size: 1.1vh; padding: 0.4vh 1vh; border-radius: 2px; display: inline-block; }
-    .btn-end-match, .btn-discard-match {
+    .btn-end-match, .btn-discard-match, .btn-ot {
       font-family: inherit; font-weight: 800; font-size: 1.3vh; letter-spacing: 0.1em;
       padding: 0.6vh 1.4vh; border-radius: 3px; cursor: pointer; border: none;
     }
     .btn-end-match { background: #22c55e; color: #06210f; }
+    .btn-ot { background: #f5a623; color: #2a1a00; }
     .btn-discard-match { background: rgba(128,128,128,0.18); color: rgba(255,255,255,0.55); }
-    .btn-end-match:active, .btn-discard-match:active { opacity: 0.8; }
+    .btn-end-match:active, .btn-discard-match:active, .btn-ot:active { opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -167,6 +172,7 @@
 
   <div class="chrono-header">
     <span class="game-time blend" id="gameTime">10:00</span>
+    <div class="ot-label" id="otLabel"></div>
   </div>
 
   <div class="team-header right">
@@ -205,6 +211,9 @@
   <div class="status-row" id="statusRow">
     <div class="right-controls">
       <a href="possession" target="_blank" class="possession">POSSESSION</a>
+      <button class="btn-ot" id="btnOvertime" style="display:none" onclick="startOvertime()">⏱ PROLONGATION</button>
+      <button class="btn-discard-match" id="btnSkipBreak" style="display:none" onclick="send('skip_break')">⏭ PASSER LA PAUSE</button>
+      <button class="btn-discard-match" id="btnCancelOt" style="display:none" onclick="cancelOvertime()">↩ ANNULER LA PROLONGATION</button>
       <button class="btn-discard-match" onclick="endMatchDiscard()">✕ QUITTER SANS ENREGISTRER</button>
       <button class="btn-end-match" onclick="endMatchSave()">🏁 TERMINER + ENREGISTRER</button>
     </div>
@@ -263,10 +272,36 @@
       cellEl.classList.toggle('match-point-critical', level === 'critical');
       barEl.classList.toggle('match-point-critical', level === 'critical');
     }
-    applyMatchPoint('Home', matchPointLevel(s.score_home, s.score_away));
-    applyMatchPoint('Away', matchPointLevel(s.score_away, s.score_home));
-    const m = Math.floor(s.game_time / 60), sec = Math.floor(s.game_time % 60);
-    document.getElementById('gameTime').textContent = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+    // Prolongation (3x3) : la première équipe qui marque otPts points gagne.
+    //  - 0 point marqué : seul un panier à 2 points suffit → niveau "soft"
+    //  - otPts-1 déjà marqués : n'importe quel panier suffit → "critique"
+    //  - pendant la pause, ou une fois la prolongation gagnée : rien.
+    const otPts = s.overtime_points || 2;
+    const otBase = s.overtime_base || 0;
+    const otWon = s.overtime && (s.score_home - otBase >= otPts || s.score_away - otBase >= otPts);
+    const otLive = s.overtime && !(s.break_time > 0) && !otWon;
+    function otLevel(mine) { return (mine - otBase) >= otPts - 1 ? 'critical' : 'soft'; }
+    applyMatchPoint('Home', s.overtime ? (otLive ? otLevel(s.score_home) : null) : matchPointLevel(s.score_home, s.score_away));
+    applyMatchPoint('Away', s.overtime ? (otLive ? otLevel(s.score_away) : null) : matchPointLevel(s.score_away, s.score_home));
+
+    // Chrono : pendant la pause d'une minute on affiche son décompte ; ensuite
+    // "PROL." (plus de chrono de jeu) ; sinon le temps de jeu normal.
+    const mmss = t => String(Math.floor(t / 60)).padStart(2,'0') + ':' + String(Math.floor(t % 60)).padStart(2,'0');
+    const inBreak = s.overtime && s.break_time > 0;
+    document.getElementById('gameTime').textContent = inBreak ? mmss(Math.ceil(s.break_time)) : (s.overtime ? 'PROL.' : mmss(s.game_time));
+
+    // Libellé sous le chrono (discret) et boutons opérateur
+    const tieAtZero = !s.overtime && s.game_time === 0 && s.score_home === s.score_away;
+    let label = '';
+    if (tieAtZero) label = 'Égalité';
+    else if (inBreak) label = 'Pause · prolongation';
+    else if (otWon) label = 'Fin de la prolongation';
+    else if (s.overtime) label = 'Prolongation · 1er à ' + otPts + ' pts';
+    const otLabel = document.getElementById('otLabel');
+    otLabel.textContent = label; otLabel.classList.toggle('on', label !== '');
+    document.getElementById('btnOvertime').style.display = tieAtZero ? '' : 'none';
+    document.getElementById('btnSkipBreak').style.display = inBreak ? '' : 'none';
+    document.getElementById('btnCancelOt').style.display = s.overtime ? '' : 'none';
 
     // Horizon
     const duration = s.match_duration || 600;
@@ -359,6 +394,14 @@
   // aux spectateurs que le tableau lui-même.
   if (new URLSearchParams(location.search).has('ctrl')) {
     document.getElementById('statusRow').style.display = 'flex';
+  }
+
+  // Prolongation : le bouton n'apparaît que sur une égalité à 0:00.
+  function startOvertime() {
+    if (confirm('Égalité à la fin du temps : lancer la prolongation (pause d\'1 minute, puis 1er à 2 points) ?')) send('start_overtime');
+  }
+  function cancelOvertime() {
+    if (confirm('Annuler la prolongation et revenir à l\'égalité ?')) send('cancel_overtime');
   }
 
   // Fin de match, deux options — cette page a été ouverte via window.open()

@@ -1,0 +1,12 @@
+# Binaires et temporaires de compilation
+scoreboard
+scoreboard.new
+*.exe
+*.test
+__pycache__/
+*.pyc
+
+# Journaux et données locales du Pi
+*.log
+scoreboard-data/
+data/

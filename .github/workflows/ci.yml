@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Tests (avec détecteur de courses)
+        run: go test -race -count=1 ./...
+      - name: Compilation Raspberry Pi (arm64)
+        run: GOOS=linux GOARCH=arm64 go build -o /dev/null .
+      - name: Syntaxe des scripts
+        run: |
+          for f in *.sh; do bash -n "$f"; done
+          python3 -m py_compile buttons.py

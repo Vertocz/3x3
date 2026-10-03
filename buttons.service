@@ -1,17 +1,16 @@
 [Unit]
 Description=Boutons GPIO Tableau 3x3
-After=scoreboard.service graphical-session.target
-Requires=scoreboard.service
+After=scoreboard.service
+Wants=scoreboard.service
 
 [Service]
 Type=simple
-User=pi
-ExecStartPre=/bin/sleep 3
-ExecStart=/usr/bin/python3 /home/pi/scoreboard/buttons.py
+User=__USER__
+ExecStart=/usr/bin/python3 -u __HOME__/scoreboard/buttons.py
 Restart=always
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=multi-user.target

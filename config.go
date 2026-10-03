@@ -1,8 +1,7 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -17,8 +16,7 @@ func handleDisplayOptions(w http.ResponseWriter, r *http.Request, sm *StateManag
 	switch r.Method {
 	case http.MethodGet:
 		s := sm.Get()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{
+		writeJSON(w, 200, map[string]bool{
 			"show_dec_scoreboard": s.ShowDecScoreboard,
 			"show_dec_possession": s.ShowDecPossession,
 		})
@@ -27,18 +25,18 @@ func handleDisplayOptions(w http.ResponseWriter, r *http.Request, sm *StateManag
 			ShowDecScoreboard bool `json:"show_dec_scoreboard"`
 			ShowDecPossession bool `json:"show_dec_possession"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "bad request", 400)
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeErr(w, 400, "bad request")
 			return
 		}
 		sm.Update(func(s *GameState) {
 			s.ShowDecScoreboard = body.ShowDecScoreboard
 			s.ShowDecPossession = body.ShowDecPossession
 		})
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"ok":true}`))
+		sm.requestSave()
+		writeOK(w)
 	default:
-		http.Error(w, "method not allowed", 405)
+		writeErr(w, 405, "method not allowed")
 	}
 }
 
@@ -51,8 +49,7 @@ func handleMatchRules(w http.ResponseWriter, r *http.Request, sm *StateManager) 
 	switch r.Method {
 	case http.MethodGet:
 		s := sm.Get()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]int{
+		writeJSON(w, 200, map[string]int{
 			"target_score": s.TargetScore,
 			"win_margin":   s.WinMargin,
 		})
@@ -61,36 +58,37 @@ func handleMatchRules(w http.ResponseWriter, r *http.Request, sm *StateManager) 
 			TargetScore int `json:"target_score"`
 			WinMargin   int `json:"win_margin"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "bad request", 400)
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeErr(w, 400, "bad request")
 			return
 		}
-		if body.TargetScore <= 0 || body.WinMargin <= 0 {
-			http.Error(w, "valeurs invalides", 400)
+		if body.TargetScore <= 0 || body.TargetScore > maxTargetScore ||
+			body.WinMargin <= 0 || body.WinMargin > maxWinMargin {
+			writeErr(w, 400, "valeurs invalides")
 			return
 		}
 		sm.Update(func(s *GameState) {
 			s.TargetScore = body.TargetScore
 			s.WinMargin = body.WinMargin
 		})
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"ok":true}`))
+		sm.requestSave()
+		writeOK(w)
 	default:
-		http.Error(w, "method not allowed", 405)
+		writeErr(w, 405, "method not allowed")
 	}
 }
 
 func handleGetIPs(w http.ResponseWriter, r *http.Request) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		http.Error(w, "erreur", 500)
+		writeErr(w, 500, "erreur")
 		return
 	}
 	type ipInfo struct {
 		Name string `json:"name"`
 		IP   string `json:"ip"`
 	}
-	var result []ipInfo
+	result := []ipInfo{}
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 {
 			continue
@@ -104,61 +102,48 @@ func handleGetIPs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, 200, result)
 }
 
 // handleEndMatch — POST /api/end-match
-// Enregistre le score courant dans l'historique des matchs (jusqu'ici
-// jamais alimenté malgré la structure MatchRecord déjà prévue dans
-// storage.go), puis remet le match à zéro — équivalent du reset_match de
-// /api/config, mais avec la sauvegarde du résultat en plus.
+// Enregistre le score courant dans l'historique des matchs, puis remet le
+// match à zéro. La lecture du score et la remise à zéro se font dans le même
+// verrou : aucun point marqué entre les deux ne peut être perdu ou compté
+// dans le match suivant.
 func handleEndMatch(w http.ResponseWriter, r *http.Request, sm *StateManager, store *Store) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
-	s := sm.Get()
-	record := MatchRecord{
-		ID:        newID(),
-		Date:      time.Now(),
-		HomeTeam:  s.TeamHomeName,
-		AwayTeam:  s.TeamAwayName,
-		HomeColor: s.TeamHomeColor,
-		AwayColor: s.TeamAwayColor,
-		ScoreHome: s.ScoreHome,
-		ScoreAway: s.ScoreAway,
-	}
-	store.Matches = append(store.Matches, record)
-	if err := store.Save(); err != nil {
+	var record MatchRecord
+	sm.Update(func(gs *GameState) {
+		record = MatchRecord{
+			ID:        newID(),
+			Date:      time.Now(),
+			HomeTeam:  gs.TeamHomeName,
+			AwayTeam:  gs.TeamAwayName,
+			HomeColor: gs.TeamHomeColor,
+			AwayColor: gs.TeamAwayColor,
+			ScoreHome: gs.ScoreHome,
+			ScoreAway: gs.ScoreAway,
+			Overtime:  gs.Overtime,
+		}
+		gs.resetMatch()
+	})
+
+	sm.requestSave() // le tableau est à zéro : on ne garde plus le match en cours
+
+	if err := store.AddMatch(record); err != nil {
 		// On ne bloque pas la remise à zéro pour autant : le match doit
 		// pouvoir se terminer même si l'historique n'a pas pu être écrit.
-		fmt.Println("⚠️  Impossible d'enregistrer l'historique du match:", err)
+		log.Printf("⚠️  Impossible d'enregistrer l'historique du match: %v", err)
 	}
 
-	sm.Update(func(gs *GameState) {
-		gs.ScoreHome = 0
-		gs.ScoreAway = 0
-		gs.FoulsHome = 0
-		gs.FoulsAway = 0
-		gs.Period = 1
-		gs.TimeRunning = false
-		gs.PossRunning = false
-		gs.GameTime = float64(gs.MatchDuration)
-		gs.PossTime = gs.PossMax
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":     true,
-		"record": record,
-	})
+	writeJSON(w, 200, map[string]any{"ok": true, "record": record})
 }
 
 func handleSaveConfig(w http.ResponseWriter, r *http.Request, sm *StateManager) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	var cfg struct {
@@ -170,45 +155,38 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request, sm *StateManager) 
 		PossMax       float64 `json:"poss_max"`
 		ResetMatch    bool    `json:"reset_match"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		http.Error(w, "bad request", 400)
+	if err := decodeJSON(w, r, &cfg); err != nil {
+		writeErr(w, 400, "bad request")
 		return
 	}
-	fmt.Printf("📥 /api/config reçu : home=%q away=%q\n", cfg.TeamHomeName, cfg.TeamAwayName)
+
+	home, away := cleanName(cfg.TeamHomeName), cleanName(cfg.TeamAwayName)
+	log.Printf("📥 /api/config : home=%q away=%q", home, away)
 
 	sm.Update(func(s *GameState) {
-		if cfg.TeamHomeName != "" {
-			s.TeamHomeName = cfg.TeamHomeName
+		if home != "" {
+			s.TeamHomeName = home
 		}
-		if cfg.TeamAwayName != "" {
-			s.TeamAwayName = cfg.TeamAwayName
+		if away != "" {
+			s.TeamAwayName = away
 		}
-		if cfg.TeamHomeColor != "" {
+		if isHexColor(cfg.TeamHomeColor) {
 			s.TeamHomeColor = cfg.TeamHomeColor
 		}
-		if cfg.TeamAwayColor != "" {
+		if isHexColor(cfg.TeamAwayColor) {
 			s.TeamAwayColor = cfg.TeamAwayColor
 		}
-		if cfg.MatchDuration > 0 {
+		if cfg.MatchDuration >= minMatchSecs && cfg.MatchDuration <= maxMatchSecs {
 			s.MatchDuration = cfg.MatchDuration
 		}
-		if cfg.PossMax > 0 {
+		if cfg.PossMax >= minPossSecs && cfg.PossMax <= maxPossSecs {
 			s.PossMax = cfg.PossMax
 		}
 		if cfg.ResetMatch {
-			s.ScoreHome = 0
-			s.ScoreAway = 0
-			s.FoulsHome = 0
-			s.FoulsAway = 0
-			s.Period = 1
-			s.TimeRunning = false
-			s.PossRunning = false
-			s.GameTime = float64(s.MatchDuration)
-			s.PossTime = s.PossMax
+			s.resetMatch()
 		}
 	})
+	sm.requestSave()
 
-	fmt.Println("✅ Config mise à jour")
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true}`))
+	writeOK(w)
 }

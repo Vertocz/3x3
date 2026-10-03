@@ -1,0 +1,16 @@
+[Unit]
+Description=Tableau de marque 3x3
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HOME__/scoreboard
+ExecStart=__HOME__/scoreboard/scoreboard
+Restart=always
+RestartSec=3
+Environment=HOME=__HOME__
+Environment=XDG_RUNTIME_DIR=/run/user/__UID__
+
+[Install]
+WantedBy=multi-user.target

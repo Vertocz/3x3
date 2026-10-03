@@ -1,17 +1,70 @@
 # Mise à jour du Raspberry Pi
 
-## Lot 3 (dernier en date) — bouton fin de match, équipes, logo, couleurs
+## Lot 4 (dernier en date) — fiabilité, fluidité, prolongation
+
+**Chaîne d'ouverture des fenêtres Chromium : NON modifiée** (`launch.go`, `hotplug.go`, `start_displays.sh`, `install_autostart.sh`, `install_window_rules.sh`, handlers `/api/launch`, `/api/move-to-hdmi`, `/api/fullscreen` et boutons « Ouvrir » identiques à l'original).
+
+- Serveur : arrêt propre (sauvegarde sur SIGTERM).
+
+Déploiement : copier tout le dossier puis `bash ~/scoreboard/update_pi.sh`.
+
+**Prolongation (règles 3x3)**
+- À la fin du temps, si le score est à égalité, le tableau affiche discrètement « ÉGALITÉ » sous le chrono. Sur la tactile (mode opérateur) un bouton orange **⏱ PROLONGATION** apparaît — uniquement dans ce cas, donc impossible à toucher par erreur pendant un match.
+- Après confirmation : **pause d'une minute** (décompte à la place du chrono, libellé « PAUSE · PROLONGATION »), puis le tableau indique « PROL. » : plus de chrono de jeu, **la première équipe qui marque 2 points gagne**.
+- Pendant la prolongation, le bouton start/stop principal pilote le chrono de possession (12 s) ; les fautes d'équipe continuent de s'accumuler (elles ne repartent pas à zéro).
+- La balle de match s'allume en prolongation (douce à 0 point marqué, marquée dès qu'une équipe a 1 point), et un libellé « Fin de la prolongation » apparaît quand une équipe a ses 2 points. L'opérateur termine le match comme d'habitude.
+- Boutons opérateur : « PASSER LA PAUSE » (pendant la pause) et « ANNULER LA PROLONGATION » (fausse manœuvre).
+- L'historique des matchs affiche « (prol.) » à côté du score.
+- Règles modifiables dans `state.go` : `overtimeBreakSecs` (60) et `overtimePoints` (2).
+
+**Reprise après coupure de courant**
+- Le match en cours (score, fautes, temps restants, prolongation) est sauvegardé en continu (à chaque action, et toutes les 10 s pendant que le chrono tourne). Après une coupure, le tableau revient dans cet état, **chronos à l'arrêt** : l'opérateur vérifie et relance. Un tableau à zéro ne laisse aucune trace.
+- Si un vieux match non terminé est resté en mémoire, il suffit de « Quitter sans enregistrer » (ou terminer le match) pour repartir à zéro.
+- Le champ « période », inutilisé, a été supprimé.
+
+**Fiabilité**
+- Chrono basé sur le temps réel écoulé (plus de dérive si le Pi est chargé) ; il ne peut plus « tourner » à 0.
+- Écritures disque atomiques + verrou sur les équipes/historique (plus de risque de fichier tronqué ou de course entre deux requêtes).
+- **Bug corrigé** : les règles de match (21 pts / 2 d'écart) et les options de décimale n'étaient pas restaurées après un redémarrage. Elles le sont maintenant, avec validation des valeurs.
+- Fin de match : lecture du score et remise à zéro dans le même verrou (aucun point perdu entre les deux).
+- WebSocket : ping/pong, file « garder le plus récent », rediffusion de l'état toutes les 2 s.
+- Validation des entrées (noms, couleurs, durées, résolutions).
+- `buttons.service` : démarrait probablement pas au boot (cible `graphical-session.target` côté système) → `multi-user.target`.
+
+**Fluidité**
+- Polices Inconsolata embarquées : plus de feuille de style Google Fonts qui ne chargeait jamais hors ligne (et pouvait retarder l'affichage).
+- Boutons physiques ±1 s : maintenir appuyé répète l'action. Connexion HTTP réutilisée, LED non bloquante.
+- `update_pi.sh` : plus de `go mod tidy` (échouait sans Internet), compilation vers un fichier temporaire.
+
+**Autres**
+- Noms d'équipe affichés sans interpréter de HTML (un nom avec `"` cassait le bouton CHOISIR).
+- Hotspot : `setup_pi.sh` détecte NetworkManager (Pi OS Bookworm / Pi 5) ; mot de passe via `WIFI_PASS`.
+- README, tests (`go test -race ./...`), CI GitHub, `.gitignore`.
+
+### À vérifier sur le Pi après déploiement
+- [ ] L'écran de contrôle et les écrans HDMI s'affichent avec la bonne police (sans Internet).
+- [ ] Maintenir un bouton ±1 s répète bien l'action.
+- [ ] `sudo systemctl status buttons` : « enabled » sur `multi-user.target`, et les boutons répondent juste après un redémarrage du Pi.
+- [ ] Redémarrer le Pi : règles de match et options de décimale conservées.
+- [ ] Prolongation : amener un match à 0:00 sur une égalité → « ÉGALITÉ » + bouton ⏱ ; pause d'1 minute ; « PROL. » ; balle de match ; fin au 2e point.
+- [ ] Couper l'alimentation en plein match (ou `sudo reboot`) : score, fautes et temps reviennent, chronos arrêtés.
+
+---
+
+## Lot 3 (historique) — bouton fin de match, équipes, logo, couleurs
+
+> Note : la page `/match` et le fichier `static/match.html` décrits ci-dessous n'existent plus. Le bouton « Terminer le match » est désormais dans la page du tableau elle-même, affiché uniquement en mode opérateur (`/scoreboard?ctrl=1`, ouvert sur la tactile par « lancer le tableau »).
 
 Fichiers concernés :
-- `server.go` (modifié — nouvelles routes `/logo.png`, `/match`, `/api/end-match`)
+- `server.go` (modifié — nouvelles routes `/logo.png`, `/api/end-match`)
 - `config.go` (modifié — nouvelle fonction `handleEndMatch`)
 - `static/config.html` (modifié — palette de couleurs fixe, clavier tactile intégré, équipes enfin persistées côté serveur)
-- `static/match.html` (**nouveau** — copie de `index.html` avec un bouton "Terminer le match")
+- `static/index.html` (modifié — bouton "Terminer le match" en mode opérateur ; une copie `match.html` avait d'abord été créée puis fusionnée ici)
 
 **⚠️ Il te manque un fichier pour compiler : `static/logo.png`**. `config.html` demande déjà `/logo.png` (c'était ça, le bug du logo qui ne s'affichait pas — la route n'existait tout simplement pas côté serveur). Dépose ton fichier logo, au format PNG, exactement à `~/scoreboard/static/logo.png` **avant** de recompiler — sans lui, `go build` échouera (`go:embed` exige que le fichier existe).
 
 Ce que ça change concrètement :
-- **Bouton "Terminer le match"** : sur la nouvelle page `/match` (celle qui s'ouvre sur la tactile après "lancer le tableau", à la place de `/scoreboard`), un bouton vert enregistre le score dans un historique côté serveur (jusque-là jamais utilisé malgré la structure déjà prévue), remet le match à zéro, puis referme l'onglet pour revenir sur `/config` — sans souris.
+- **Bouton "Terminer le match"** : sur la page du tableau en mode opérateur `/scoreboard?ctrl=1` (celle qui s'ouvre sur la tactile après "lancer le tableau"), un bouton vert enregistre le score dans un historique côté serveur (jusque-là jamais utilisé malgré la structure déjà prévue), remet le match à zéro, puis referme l'onglet pour revenir sur `/config` — sans souris.
 - **Équipes enfin sauvegardées pour de vrai** : `config.html` utilisait le `localStorage` du navigateur, complètement déconnecté du serveur — d'où l'impression que ça ne marchait pas (probablement perdu à chaque redémarrage du Pi si le profil Chromium de la tactile est dans `/tmp`). C'est maintenant branché sur `/api/teams`, qui écrit dans `~/scoreboard-data/teams.json` et survit aux redémarrages.
 - **Palette de couleurs fixe** : blanc (gris très clair `#d9d9d9`), noir (gris très foncé `#1c1c1c`), rouge, bleu, vert, jaune, rose, violet, orange, marron. Modifiable directement dans `config.html` (`const COLORS = [...]`) si les teintes ne conviennent pas.
 - **Clavier tactile intégré** pour le nom des équipes (AZERTY, pavé de touches dans la modale) — pas de dépendance à un clavier virtuel système, pour éviter un nouveau point de fragilité Wayland.
@@ -20,7 +73,7 @@ Ce que ça change concrètement :
 ```bash
 cp -r ~/scoreboard ~/scoreboard.bak-$(date +%Y%m%d)
 # copier server.go, config.go dans ~/scoreboard/
-# copier static/config.html, static/match.html dans ~/scoreboard/static/
+# copier static/config.html, static/index.html dans ~/scoreboard/static/
 # déposer TON logo réel dans ~/scoreboard/static/logo.png
 cd ~/scoreboard
 go build -o scoreboard .
