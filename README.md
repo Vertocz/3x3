@@ -57,8 +57,9 @@ boutons et écrans. Les équipes, l'historique et les réglages sont conservés
 | `scoreboard.service`, `buttons.service` | modèles systemd (`__USER__`, `__HOME__`) |
 
 ## Règles gérées
-- Match de 10 min (réglable), chrono de possession de 12 s, fautes d'équipe, fin à 21 points avec écart minimum (réglables) : balle de match affichée.
-- **Prolongation (3x3)** : égalité à la fin du temps → pause d'1 minute, puis première équipe à 2 points. L'opérateur la déclenche depuis la tactile (bouton visible seulement sur une égalité à 0:00).
+- Match de 10 min (réglable), chrono de possession de 12 s, fautes d'équipe.
+- **Fin de match** : la première équipe qui atteint 21 points (réglable) gagne. La balle de match pulse pour toute équipe qui pourrait gagner sur le prochain panier (1 ou 2 points).
+- **Prolongation** : égalité à la fin du temps → bouton « PROLONGATION » sur la tactile, le score est conservé et la première équipe qui a **2 points d'avance** gagne (écart réglable), sans chrono de jeu.
 - **Coupure de courant** : le match en cours est restauré (score, fautes, temps, prolongation), chronos à l'arrêt.
 
 ## Choix de conception

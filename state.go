@@ -31,13 +31,10 @@ type GameState struct {
 	TargetScore       int     `json:"target_score"`
 	WinMargin         int     `json:"win_margin"`
 
-	// Prolongation (règle 3x3) : en cas d'égalité à la fin du temps, pause
-	// d'une minute puis la première équipe qui marque OvertimePoints points
-	// gagne, sans chrono de jeu.
-	Overtime       bool    `json:"overtime"`
-	OvertimeBase   int     `json:"overtime_base"`   // score commun au début de la prolongation
-	OvertimePoints int     `json:"overtime_points"` // points à marquer pour gagner (2)
-	BreakTime      float64 `json:"break_time"`      // secondes restantes de la pause (0 = pause finie)
+	// Prolongation : en cas d'égalité à la fin du temps, le match continue sans
+	// chrono de jeu et SANS remise à zéro du score. Gagne la première équipe qui
+	// a WinMargin points (2) d'avance sur l'autre.
+	Overtime bool `json:"overtime"`
 }
 
 // resetMatch remet score, fautes, période et chronos à leur valeur de début
@@ -48,8 +45,6 @@ func (s *GameState) resetMatch() {
 	s.FoulsHome = 0
 	s.FoulsAway = 0
 	s.Overtime = false
-	s.OvertimeBase = 0
-	s.BreakTime = 0
 	s.TimeRunning = false
 	s.PossRunning = false
 	s.GameTime = float64(s.MatchDuration)
@@ -77,22 +72,16 @@ type persistedConfig struct {
 
 // persistedMatch est l'état d'un match commencé mais pas terminé.
 type persistedMatch struct {
-	ScoreHome    int     `json:"score_home"`
-	ScoreAway    int     `json:"score_away"`
-	FoulsHome    int     `json:"fouls_home"`
-	FoulsAway    int     `json:"fouls_away"`
-	GameTime     float64 `json:"game_time"`
-	PossTime     float64 `json:"poss_time"`
-	Overtime     bool    `json:"overtime"`
-	OvertimeBase int     `json:"overtime_base"`
-	BreakTime    float64 `json:"break_time"`
+	ScoreHome int     `json:"score_home"`
+	ScoreAway int     `json:"score_away"`
+	FoulsHome int     `json:"fouls_home"`
+	FoulsAway int     `json:"fouls_away"`
+	GameTime  float64 `json:"game_time"`
+	PossTime  float64 `json:"poss_time"`
+	Overtime  bool    `json:"overtime"`
 }
 
 const (
-	// Règles de la prolongation au 3x3.
-	overtimeBreakSecs = 60.0 // pause avant la prolongation
-	overtimePoints    = 2    // premier à marquer 2 points
-
 	// tickInterval : cadence de rafraîchissement des chronos.
 	tickInterval = 100 * time.Millisecond
 	// maxTickDelta : plafond du temps réel pris en compte en un tick (si le
@@ -121,17 +110,16 @@ type StateManager struct {
 func NewStateManager() *StateManager {
 	sm := &StateManager{
 		state: GameState{
-			GameTime:       600,
-			PossTime:       12,
-			OvertimePoints: overtimePoints,
-			TeamHomeName:   "ÉQUIPE 1",
-			TeamAwayName:   "ÉQUIPE 2",
-			TeamHomeColor:  "#e63946",
-			TeamAwayColor:  "#457b9d",
-			MatchDuration:  600,
-			PossMax:        12,
-			TargetScore:    21,
-			WinMargin:      2,
+			GameTime:      600,
+			PossTime:      12,
+			TeamHomeName:  "ÉQUIPE 1",
+			TeamAwayName:  "ÉQUIPE 2",
+			TeamHomeColor: "#e63946",
+			TeamAwayColor: "#457b9d",
+			MatchDuration: 600,
+			PossMax:       12,
+			TargetScore:   21,
+			WinMargin:     2,
 		},
 		clients:  make(map[chan []byte]bool),
 		saveCh:   make(chan struct{}, 1),
@@ -177,7 +165,7 @@ func (sm *StateManager) snapshotConfig() persistedConfig {
 			ScoreHome: s.ScoreHome, ScoreAway: s.ScoreAway,
 			FoulsHome: s.FoulsHome, FoulsAway: s.FoulsAway,
 			GameTime: s.GameTime, PossTime: s.PossTime,
-			Overtime: s.Overtime, OvertimeBase: s.OvertimeBase, BreakTime: s.BreakTime,
+			Overtime: s.Overtime,
 		}
 	}
 	return c
@@ -289,8 +277,6 @@ func (sm *StateManager) loadState() {
 		s.PossTime = clamp(m.PossTime, 0, s.PossMax)
 		if m.Overtime {
 			s.Overtime = true
-			s.OvertimeBase = clampInt(m.OvertimeBase, 0, maxTargetScore)
-			s.BreakTime = clamp(m.BreakTime, 0, overtimeBreakSecs)
 			s.GameTime = 0
 		}
 	}
@@ -337,11 +323,6 @@ func (sm *StateManager) tickAt(now time.Time) {
 
 	s := &sm.state
 	changed := false
-
-	if s.Overtime && s.BreakTime > 0 {
-		s.BreakTime = math.Max(0, s.BreakTime-dt)
-		changed = true
-	}
 
 	if s.TimeRunning {
 		if s.GameTime > 0 {

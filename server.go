@@ -543,11 +543,7 @@ func handleAction(a ClientAction, sm *StateManager) {
 		case "toggle_timer":
 			if s.Overtime {
 				// En prolongation il n'y a plus de chrono de jeu : le bouton
-				// principal lance/arrête le chrono de possession. Rien pendant
-				// la pause d'une minute.
-				if s.BreakTime > 0 {
-					return
-				}
+				// principal lance/arrête le chrono de possession.
 				if !s.PossRunning && s.PossTime <= 0 {
 					return
 				}
@@ -567,9 +563,6 @@ func handleAction(a ClientAction, sm *StateManager) {
 			}
 			s.GameTime = clamp(s.GameTime+float64(a.Value), 0, float64(s.MatchDuration))
 		case "toggle_poss":
-			if s.Overtime && s.BreakTime > 0 {
-				return
-			}
 			if !s.PossRunning && s.PossTime <= 0 {
 				return
 			}
@@ -607,20 +600,13 @@ func handleAction(a ClientAction, sm *StateManager) {
 			if s.Overtime || s.TimeRunning || s.GameTime > 0 || s.ScoreHome != s.ScoreAway {
 				return
 			}
+			// Le score est conservé tel quel (17-17 reste 17-17).
 			s.Overtime = true
-			s.OvertimeBase = s.ScoreHome
-			s.BreakTime = overtimeBreakSecs
 			s.PossTime = s.PossMax
 			s.PossRunning = false
-		case "skip_break":
-			if s.Overtime {
-				s.BreakTime = 0
-			}
 		case "cancel_overtime":
 			// Annulation en cas de fausse manœuvre : retour à l'égalité à 0:00.
 			s.Overtime = false
-			s.OvertimeBase = 0
-			s.BreakTime = 0
 			s.PossRunning = false
 		}
 	})

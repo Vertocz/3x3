@@ -310,12 +310,12 @@ func TestResolutionValidation(t *testing.T) {
 	}
 }
 
-// ── Prolongation (règles 3x3) ───────────────────────────────────────────
+// ── Prolongation ────────────────────────────────────────────────────────
 
-// tieAtZero amène un match à 0:00 sur une égalité 14-14.
+// tieAtZero amène un match à 0:00 sur une égalité 17-17.
 func tieAtZero(t *testing.T, sm *StateManager) {
 	t.Helper()
-	sm.Update(func(s *GameState) { s.ScoreHome, s.ScoreAway, s.GameTime = 14, 14, 0 })
+	sm.Update(func(s *GameState) { s.ScoreHome, s.ScoreAway, s.GameTime = 17, 17, 0 })
 }
 
 func TestOvertimeOnlyOnTieAtZero(t *testing.T) {
@@ -333,47 +333,33 @@ func TestOvertimeOnlyOnTieAtZero(t *testing.T) {
 	if sm.Get().Overtime {
 		t.Fatal("prolongation refusée si pas d'égalité")
 	}
-	// Égalité à 0:00 : acceptée.
+	// Égalité à 0:00 : acceptée, SANS toucher au score, et sans pause.
 	tieAtZero(t, sm)
 	handleAction(ClientAction{Action: "start_overtime"}, sm)
 	s := sm.Get()
-	if !s.Overtime || s.OvertimeBase != 14 || s.BreakTime != overtimeBreakSecs || s.PossRunning {
+	if !s.Overtime || s.ScoreHome != 17 || s.ScoreAway != 17 || s.PossRunning {
 		t.Fatalf("démarrage de la prolongation: %+v", s)
-	}
-	// Un second appui ne relance rien.
-	sm.Update(func(s *GameState) { s.BreakTime = 20 })
-	handleAction(ClientAction{Action: "start_overtime"}, sm)
-	if sm.Get().BreakTime != 20 {
-		t.Fatal("start_overtime ne doit pas relancer la pause en cours")
 	}
 }
 
-func TestOvertimeBreakCountsDownThenPossessionRuns(t *testing.T) {
+func TestOvertimeKeepsScoreAndPossessionRuns(t *testing.T) {
 	sm := newTestManager(t)
 	tieAtZero(t, sm)
 	handleAction(ClientAction{Action: "start_overtime"}, sm)
 
-	base := time.Now()
-	sm.lastTick = base
-	sm.tickAt(base.Add(10 * time.Second)) // 10 s de pause écoulées (cap 2 s par tick)
-	if got := sm.Get().BreakTime; got < overtimeBreakSecs-maxTickDelta-1e-9 || got >= overtimeBreakSecs {
-		t.Fatalf("la pause doit décompter: %v", got)
-	}
-
-	// Pendant la pause, le bouton principal et la possession sont inertes.
-	handleAction(ClientAction{Action: "toggle_timer"}, sm)
-	handleAction(ClientAction{Action: "toggle_poss"}, sm)
-	if sm.Get().PossRunning {
-		t.Fatal("rien ne démarre pendant la pause")
-	}
-
-	// Fin de la pause (sautée) : le bouton principal pilote la possession
-	// et ne touche jamais au chrono de jeu.
-	handleAction(ClientAction{Action: "skip_break"}, sm)
+	// Le bouton principal pilote le chrono de possession, jamais le chrono de jeu.
 	handleAction(ClientAction{Action: "toggle_timer"}, sm)
 	s := sm.Get()
-	if s.BreakTime != 0 || !s.PossRunning || s.TimeRunning || s.GameTime != 0 {
-		t.Fatalf("après la pause: %+v", s)
+	if !s.PossRunning || s.TimeRunning || s.GameTime != 0 {
+		t.Fatalf("après toggle_timer: %+v", s)
+	}
+	// Le temps ne décompte pas : seule la possession bouge.
+	base := time.Now()
+	sm.lastTick = base
+	sm.tickAt(base.Add(1 * time.Second))
+	s = sm.Get()
+	if s.GameTime != 0 || s.PossTime >= s.PossMax {
+		t.Fatalf("seule la possession doit décompter: %+v", s)
 	}
 	// Reset possession : repart à 12 s et reste en marche.
 	sm.Update(func(s *GameState) { s.PossTime = 3 })
@@ -382,10 +368,13 @@ func TestOvertimeBreakCountsDownThenPossessionRuns(t *testing.T) {
 	if s.PossTime != s.PossMax || !s.PossRunning {
 		t.Fatalf("reset_poss en prolongation: %+v", s)
 	}
-	// Le chrono de jeu ne se règle plus.
+	// Le chrono de jeu ne se règle plus ; les points continuent à s'ajouter au score existant.
 	handleAction(ClientAction{Action: "game_time_adj", Value: 5}, sm)
-	if sm.Get().GameTime != 0 {
-		t.Fatal("pas de réglage du chrono de jeu en prolongation")
+	handleAction(ClientAction{Action: "score_home_inc"}, sm)
+	handleAction(ClientAction{Action: "score_home_inc"}, sm)
+	s = sm.Get()
+	if s.GameTime != 0 || s.ScoreHome != 19 || s.ScoreAway != 17 {
+		t.Fatalf("score ou chrono incorrect: %+v", s)
 	}
 }
 
@@ -395,12 +384,12 @@ func TestOvertimeCancelAndReset(t *testing.T) {
 	handleAction(ClientAction{Action: "start_overtime"}, sm)
 	handleAction(ClientAction{Action: "cancel_overtime"}, sm)
 	s := sm.Get()
-	if s.Overtime || s.BreakTime != 0 || s.OvertimeBase != 0 || s.ScoreHome != 14 || s.GameTime != 0 {
+	if s.Overtime || s.ScoreHome != 17 || s.ScoreAway != 17 || s.GameTime != 0 {
 		t.Fatalf("annulation: %+v", s)
 	}
 	handleAction(ClientAction{Action: "start_overtime"}, sm)
 	handleAction(ClientAction{Action: "reset_game"}, sm)
-	if s := sm.Get(); s.Overtime || s.BreakTime != 0 || s.ScoreHome != 0 {
+	if s := sm.Get(); s.Overtime || s.ScoreHome != 0 {
 		t.Fatalf("reset_game doit sortir de la prolongation: %+v", s)
 	}
 }
@@ -416,7 +405,7 @@ func TestEndMatchRecordsOvertime(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handleEndMatch(rec, httptest.NewRequest(http.MethodPost, "/api/end-match", nil), sm, store)
 	ms := store.ListMatches()
-	if len(ms) != 1 || !ms[0].Overtime || ms[0].ScoreHome != 16 || ms[0].ScoreAway != 14 {
+	if len(ms) != 1 || !ms[0].Overtime || ms[0].ScoreHome != 19 || ms[0].ScoreAway != 17 {
 		t.Fatalf("historique: %+v", ms)
 	}
 	if sm.Get().Overtime {
@@ -464,11 +453,10 @@ func TestOvertimeSurvivesPowerCut(t *testing.T) {
 	sm := NewStateManager()
 	tieAtZero(t, sm)
 	handleAction(ClientAction{Action: "start_overtime"}, sm)
-	handleAction(ClientAction{Action: "skip_break"}, sm)
 	handleAction(ClientAction{Action: "score_away_inc"}, sm)
 	sm.saveState()
 	got := NewStateManager().Get()
-	if !got.Overtime || got.OvertimeBase != 14 || got.ScoreAway != 15 || got.BreakTime != 0 || got.GameTime != 0 {
+	if !got.Overtime || got.ScoreHome != 17 || got.ScoreAway != 18 || got.GameTime != 0 {
 		t.Fatalf("prolongation non restaurée: %+v", got)
 	}
 }

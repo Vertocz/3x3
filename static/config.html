@@ -278,7 +278,7 @@
       <div>
         <div class="modal-section-label">Fin de match ("balle de match")</div>
         <div class="toggle-switch">
-          <span class="toggle-switch-label">Score pour gagner</span>
+          <span class="toggle-switch-label">Score pour gagner (temps réglementaire)</span>
           <div class="stepper">
             <button class="stepper-btn" onclick="adjustMatchRule('target_score',-1)">−</button>
             <span class="stepper-val" id="targetScoreVal">21</span>
@@ -286,14 +286,14 @@
           </div>
         </div>
         <div class="toggle-switch">
-          <span class="toggle-switch-label">Écart minimum</span>
+          <span class="toggle-switch-label">Écart pour gagner en prolongation</span>
           <div class="stepper">
             <button class="stepper-btn" onclick="adjustMatchRule('win_margin',-1)">−</button>
             <span class="stepper-val" id="winMarginVal">2</span>
             <button class="stepper-btn" onclick="adjustMatchRule('win_margin',1)">+</button>
           </div>
         </div>
-        <div class="modal-hint">Le score et la bande de couleur de l'équipe concernée pulsent dès qu'un panier suffirait à terminer le match.</div>
+        <div class="modal-hint">Le score et la bande de couleur de l'équipe concernée pulsent dès qu'un panier suffirait à gagner. Temps réglementaire : la première équipe à atteindre le score gagne. Prolongation : le score est conservé et il faut l'écart indiqué.</div>
       </div>
     </div>
   </div>

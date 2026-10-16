@@ -18,6 +18,20 @@ from signal import pause
 API_ACTION   = "http://localhost:8000/api/action"
 API_SHUTDOWN = "http://localhost:8000/api/shutdown"
 
+# ── Rôle du bouton « possession −1 s » (GPIO 19) ─────────────────────────────
+# True  : ce bouton sert de START/STOP du chrono de possession SEUL. Le temps
+#         de jeu continue de défiler : pratique pour les matches à temps non
+#         décompté, où l'on n'arrête que la possession sur les arrêts de jeu.
+# False : retour à l'ancien rôle, « possession −1 s » (maintenir = répéter).
+#
+# Pour revenir en arrière (par exemple quand un bouton dédié start/stop
+# possession sera branché sur GPIO 11, déjà programmé pour cette action) :
+#   1. mettre la ligne ci-dessous à False
+#   2. sudo systemctl restart buttons
+GPIO19_IS_POSS_TOGGLE = True
+
+GPIO19_ACTION = ("toggle_poss", 0) if GPIO19_IS_POSS_TOGGLE else ("poss_time_adj", -1)
+
 # (gpio_bouton, action, valeur, gpio_led ou None)
 BUTTON_CONFIG = [
     (17, "score_home_inc",  0,   10),   # +1 score dom   LED MOSI
@@ -28,7 +42,7 @@ BUTTON_CONFIG = [
     (6,  "game_time_adj",   1, None),   # chrono +1s
     (12, "toggle_timer",    0,   23),   # start/stop     LED GPIO23
     (16, "reset_poss",      0,   21),   # reset poss     LED GPIO21
-    (19, "poss_time_adj",  -1, None),   # poss -1s
+    (19, GPIO19_ACTION[0], GPIO19_ACTION[1], None),   # poss -1s  OU  start/stop possession (voir GPIO19_IS_POSS_TOGGLE)
     (18, "poss_time_adj",   1, None),   # poss +1s
     (20, "score_away_inc",  0,    9),   # +1 score vis   LED MISO
     (25, "score_away_dec",  0, None),   # -1 score vis
