@@ -81,3 +81,7 @@ go vet ./... && go test -race ./...
 ```
 La CI GitHub (`.github/workflows/ci.yml`) fait la même chose et vérifie aussi la
 compilation arm64 et la syntaxe des scripts.
+
+## Licence
+© 2026 Victor Crézé (Vertocz). Tous droits réservés : licence propriétaire, voir
+[`LICENSE`](LICENSE). Composants tiers : voir [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (c) 2026 Victor Crézé (Vertocz). Tous droits réservés.
+# Licence propriétaire : voir le fichier LICENSE.
 # ══════════════════════════════════════════════════════════════════════════════
 #  start_displays.sh — Tableau de marque 3×3
 # ══════════════════════════════════════════════════════════════════════════════

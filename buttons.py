@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Victor Crézé (Vertocz). Tous droits réservés.
+# Licence propriétaire : voir le fichier LICENSE.
 """Boutons physiques du tableau 3x3 (GPIO, Raspberry Pi 5 / lgpio).
 
 Chaque bouton envoie une action au serveur Go via /api/action. Le bouton

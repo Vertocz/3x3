@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (c) 2026 Victor Crézé (Vertocz). Tous droits réservés.
+# Licence propriétaire : voir le fichier LICENSE.
 # ══════════════════════════════════════════════════════
 #  SETUP COMPLET — Tableau de marque Basketball 3x3
 #  À lancer UNE SEULE FOIS sur le Raspberry Pi

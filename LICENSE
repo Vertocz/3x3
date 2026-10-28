@@ -1,0 +1,52 @@
+Licence propriétaire — Station 12 / Tableau de marque Basketball 3x3
+Proprietary licence — all rights reserved
+
+Copyright (c) 2026 Victor Crézé (« Vertocz »). Tous droits réservés.
+
+PROJET DE TEXTE — à faire relire par un conseil en propriété intellectuelle
+avant commercialisation.
+
+1. Titularité
+   Ce logiciel (code source, interfaces, textes, images, sons et documentation
+   originaux) est une œuvre protégée par le droit d'auteur (Code de la propriété
+   intellectuelle, art. L112-2 13° et L122-6). Le titulaire des droits se réserve
+   tous les droits qui ne sont pas expressément accordés ci-dessous.
+
+2. Ce qui est permis
+   Vous pouvez consulter le code source de ce dépôt, à titre personnel et à des
+   fins d'évaluation uniquement.
+
+3. Ce qui est interdit sans autorisation écrite préalable du titulaire
+   - copier, reproduire, modifier, adapter, traduire ou créer des œuvres dérivées ;
+   - distribuer, publier, héberger, louer, sous-licencier ou vendre le logiciel,
+     en tout ou partie, sous forme de code source ou compilée ;
+   - intégrer tout ou partie du logiciel dans un produit ou service, commercial
+     ou non ;
+   - installer le logiciel sur du matériel destiné à être vendu, loué ou fourni
+     à un tiers ;
+   - retirer ou altérer les mentions de copyright et de licence ;
+   - utiliser le nom « Station 12 », ses logos ou toute dénomination
+     susceptible de créer une confusion avec eux.
+
+4. Composants tiers
+   Les composants tiers (bibliothèques, polices, paquets système) restent soumis
+   à leurs propres licences, listées dans THIRD_PARTY_NOTICES.md. La présente
+   licence ne s'applique pas à eux.
+
+5. Absence de garantie
+   Le logiciel est fourni « en l'état », sans garantie d'aucune sorte, expresse
+   ou implicite, y compris de qualité marchande ou d'adéquation à un usage
+   particulier. Le titulaire ne saurait être tenu responsable des dommages
+   résultant de son utilisation, dans les limites permises par la loi.
+
+6. Droit applicable
+   Cette licence est régie par le droit français.
+
+Contact pour obtenir une autorisation : creze.victor@gmail.com
+
+-------------------------------------------------------------------------------
+English summary (the French text prevails): this software is proprietary. You
+may read the source code for personal evaluation only. Copying, modifying,
+redistributing, selling, embedding it in a product or installing it on hardware
+supplied to third parties requires prior written permission from the copyright
+holder. Third-party components remain under their own licences.

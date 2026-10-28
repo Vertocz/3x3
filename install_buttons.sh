@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (c) 2026 Victor Crézé (Vertocz). Tous droits réservés.
+# Licence propriétaire : voir le fichier LICENSE.
 # ══════════════════════════════════════════════════════
 #  Installation des boutons GPIO (Pi 5 — lgpio)
 #  Lancer sur le Pi : bash ~/scoreboard/install_buttons.sh
