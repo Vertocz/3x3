@@ -1,0 +1,326 @@
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..5969da7
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,52 @@
++Licence propriétaire — Station 12 / Tableau de marque Basketball 3x3
++Proprietary licence — all rights reserved
++
++Copyright (c) 2026 [Victor CREZE] (« Vertocz »). Tous droits réservés.
++
++
++1. Titularité
++   Ce logiciel (code source, interfaces, textes, images, sons et documentation
++   originaux) est une œuvre protégée par le droit d'auteur (Code de la propriété
++   intellectuelle, art. L112-2 13° et L122-6). Le titulaire des droits se réserve
++   tous les droits qui ne sont pas expressément accordés ci-dessous.
++
++2. Ce qui est permis
++   Vous pouvez consulter le code source de ce dépôt, à titre personnel et à des
++   fins d'évaluation uniquement.
++
++3. Ce qui est interdit sans autorisation écrite préalable du titulaire
++   - copier, reproduire, modifier, adapter, traduire ou créer des œuvres dérivées ;
++   - distribuer, publier, héberger, louer, sous-licencier ou vendre le logiciel,
++     en tout ou partie, sous forme de code source ou compilée ;
++   - intégrer tout ou partie du logiciel dans un produit ou service, commercial
++     ou non ;
++   - installer le logiciel sur du matériel destiné à être vendu, loué ou fourni
++     à un tiers ;
++   - retirer ou altérer les mentions de copyright et de licence ;
++   - utiliser le nom « Station 12 », ses logos ou toute dénomination
++     susceptible de créer une confusion avec eux.
++
++4. Composants tiers
++   Les composants tiers (bibliothèques, polices, paquets système) restent soumis
++   à leurs propres licences, listées dans THIRD_PARTY_NOTICES.md. La présente
++   licence ne s'applique pas à eux.
++
++5. Absence de garantie
++   Le logiciel est fourni « en l'état », sans garantie d'aucune sorte, expresse
++   ou implicite, y compris de qualité marchande ou d'adéquation à un usage
++   particulier. Le titulaire ne saurait être tenu responsable des dommages
++   résultant de son utilisation, dans les limites permises par la loi.
++
++6. Droit applicable
++   Cette licence est régie par le droit français.
++
++Contact pour obtenir une autorisation : [adresse e-mail de contact]
++
++-------------------------------------------------------------------------------
++English summary (the French text prevails): this software is proprietary. You
++may read the source code for personal evaluation only. Copying, modifying,
++redistributing, selling, embedding it in a product or installing it on hardware
++supplied to third parties requires prior written permission from the copyright
++holder. Third-party components remain under their own licences.
+diff --git a/README.md b/README.md
+index 2955888..a9516b0 100644
+--- a/README.md
++++ b/README.md
+@@ -81,3 +81,7 @@ go vet ./... && go test -race ./...
+ ```
+ La CI GitHub (`.github/workflows/ci.yml`) fait la même chose et vérifie aussi la
+ compilation arm64 et la syntaxe des scripts.
++
++## Licence
++© 2026 [Victor CREZE] (Vertocz). Tous droits réservés : licence propriétaire, voir
++[`LICENSE`](LICENSE). Composants tiers : voir [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+diff --git a/THIRD_PARTY_NOTICES.md b/THIRD_PARTY_NOTICES.md
+new file mode 100644
+index 0000000..5686536
+--- /dev/null
++++ b/THIRD_PARTY_NOTICES.md
+@@ -0,0 +1,43 @@
++# Composants tiers
++
++Ces composants ne sont pas couverts par la licence du projet (voir `LICENSE`) :
++chacun reste soumis à sa propre licence. Les licences indiquées sont celles
++connues à la date de rédaction : **à re-vérifier avant toute commercialisation**
++(texte exact, version utilisée, obligations de mention).
++
++## Embarqués dans le dépôt
++
++| Composant | Où | Licence | Remarque |
++|---|---|---|---|
++| Inconsolata (polices `.woff2`) | `static/fonts/` | SIL Open Font License 1.1 | Texte de licence fourni (`static/fonts/LICENSE-Inconsolata-OFL.txt`) : à conserver avec les polices. |
++
++## Dépendances Go (`go.mod`)
++
++| Composant | Version | Licence |
++|---|---|---|
++| github.com/gorilla/websocket | v1.5.1 | BSD-2-Clause |
++| golang.org/x/net | v0.17.0 (indirecte) | BSD-3-Clause |
++| Chaîne d'outils Go | 1.24.x | BSD-3-Clause |
++
++## Dépendances Python (`buttons.py`)
++
++| Composant | Licence |
++|---|---|
++| requests | Apache-2.0 |
++| gpiozero | BSD-3-Clause |
++| lgpio | domaine public (Unlicense) |
++
++## Paquets système installés par `setup_pi.sh` / `install_buttons.sh`
++
++`hostapd`, `dnsmasq` (licences GNU GPL), `wlr-randr`, `wlrctl`, Chromium,
++Raspberry Pi OS (Debian). Ils sont exécutés comme programmes distincts, pas
++liés au code du projet. **Si vous livrez un Raspberry Pi ou une carte SD
++préinstallés, vous redistribuez ces composants** : prévoyez la liste des
++paquets, leurs licences et l'accès aux sources lorsque la licence l'exige
++(GPL).
++
++## Médias du projet : origine à documenter
++
++`static/ball.png`, `static/lancer.png`, `static/logo.png`, `static/station12.png`,
++`static/horn.mp3` : indiquer ici l'auteur et la licence de chacun (création
++personnelle, banque libre de droits, achat…) et conserver les justificatifs.
+diff --git a/buttons.py b/buttons.py
+index 93aef8f..d378830 100644
+--- a/buttons.py
++++ b/buttons.py
+@@ -1,4 +1,6 @@
+ #!/usr/bin/env python3
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ """Boutons physiques du tableau 3x3 (GPIO, Raspberry Pi 5 / lgpio).
+ 
+ Chaque bouton envoie une action au serveur Go via /api/action. Le bouton
+diff --git a/config.go b/config.go
+index 9184c96..68c4ae8 100644
+--- a/config.go
++++ b/config.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Prénom NOM] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/hotplug.go b/hotplug.go
+index e4bbbdd..ded631e 100644
+--- a/hotplug.go
++++ b/hotplug.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Prénom NOM] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/http_util.go b/http_util.go
+index 54eaf4a..f30fca7 100644
+--- a/http_util.go
++++ b/http_util.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/install_autostart.sh b/install_autostart.sh
+index f0b0725..5a2ae66 100644
+--- a/install_autostart.sh
++++ b/install_autostart.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════════════════════════════
+ #  install_autostart.sh — Tableau de marque 3×3
+ #  Configure le démarrage automatique via UN SEUL service systemd utilisateur.
+diff --git a/install_buttons.sh b/install_buttons.sh
+index 19d0bfa..7afbf29 100644
+--- a/install_buttons.sh
++++ b/install_buttons.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════
+ #  Installation des boutons GPIO (Pi 5 — lgpio)
+ #  Lancer sur le Pi : bash ~/scoreboard/install_buttons.sh
+diff --git a/install_window_rules.sh b/install_window_rules.sh
+index 84e493b..b02a3d6 100644
+--- a/install_window_rules.sh
++++ b/install_window_rules.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════════════════════════════
+ #  install_window_rules.sh — Tableau de marque 3×3
+ #
+diff --git a/launch.go b/launch.go
+index 155e6da..99b7573 100644
+--- a/launch.go
++++ b/launch.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/main.go b/main.go
+index 8f19c57..8eaa0f2 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/server.go b/server.go
+index 9d3d6b4..6963b8b 100644
+--- a/server.go
++++ b/server.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/setup_pi.sh b/setup_pi.sh
+index bcee473..96c9195 100644
+--- a/setup_pi.sh
++++ b/setup_pi.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════
+ #  SETUP COMPLET — Tableau de marque Basketball 3x3
+ #  À lancer UNE SEULE FOIS sur le Raspberry Pi
+diff --git a/start_displays.sh b/start_displays.sh
+index 0cdb6d6..db66fcc 100644
+--- a/start_displays.sh
++++ b/start_displays.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════════════════════════════
+ #  start_displays.sh — Tableau de marque 3×3
+ # ══════════════════════════════════════════════════════════════════════════════
+diff --git a/state.go b/state.go
+index da13617..b553678 100644
+--- a/state.go
++++ b/state.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/state_test.go b/state_test.go
+index 2fe161b..c05f817 100644
+--- a/state_test.go
++++ b/state_test.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/storage.go b/storage.go
+index b995de6..767e2e8 100644
+--- a/storage.go
++++ b/storage.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/teams_api.go b/teams_api.go
+index 17b10e1..3cb0289 100644
+--- a/teams_api.go
++++ b/teams_api.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/update_pi.sh b/update_pi.sh
+index 0aba27b..505f805 100644
+--- a/update_pi.sh
++++ b/update_pi.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++# Licence propriétaire : voir le fichier LICENSE.
+ # ══════════════════════════════════════════════════════════════════════════════
+ #  update_pi.sh — Mise à jour rapide en développement
+ #
+diff --git a/validate.go b/validate.go
+index 4246c23..2c8310e 100644
+--- a/validate.go
++++ b/validate.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
+diff --git a/wayland.go b/wayland.go
+index 5dc6247..284c90b 100644
+--- a/wayland.go
++++ b/wayland.go
+@@ -1,3 +1,6 @@
++// Copyright (c) 2026 [Victor CREZE] (Vertocz). Tous droits réservés.
++// Licence propriétaire : voir le fichier LICENSE.
++
+ package main
+ 
+ import (
